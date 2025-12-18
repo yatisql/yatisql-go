@@ -44,7 +44,7 @@ func Open(dbPath string) (*DB, error) {
 		// Create directory for database file if it doesn't exist
 		dbDir := filepath.Dir(path)
 		if dbDir != "." && dbDir != "" {
-			if err := os.MkdirAll(dbDir, 0755); err != nil {
+			if err := os.MkdirAll(dbDir, 0o755); err != nil {
 				return nil, fmt.Errorf("failed to create database directory %s: %w", dbDir, err)
 			}
 		}

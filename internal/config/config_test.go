@@ -6,10 +6,10 @@ import (
 
 func TestParseDelimiter(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		want      rune
-		wantErr   bool
+		name    string
+		input   string
+		want    rune
+		wantErr bool
 	}{
 		{"comma lowercase", "comma", ',', false},
 		{"comma uppercase", "COMMA", ',', false},
@@ -81,4 +81,3 @@ func TestConfigValidate(t *testing.T) {
 		})
 	}
 }
-

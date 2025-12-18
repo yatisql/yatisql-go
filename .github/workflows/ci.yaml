@@ -17,7 +17,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: "1.23"
           cache: true
 
       - name: Download dependencies
@@ -43,13 +43,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: "1.23"
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.1
           args: --timeout=5m
 
   build:
@@ -58,11 +58,8 @@ jobs:
     needs: [test, lint]
     strategy:
       matrix:
-        goos: [linux, darwin, windows]
+        goos: [linux, mac]
         goarch: [amd64, arm64]
-        exclude:
-          - goos: windows
-            goarch: arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -70,27 +67,17 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: "1.23"
           cache: true
 
       - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 1
-        run: |
-          # CGO is required for sqlite3
-          if [ "$GOOS" = "linux" ]; then
-            go build -o bin/yatisql-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/yatisql
-          else
-            echo "Skipping CGO build for $GOOS (requires cross-compilation setup)"
-          fi
+        run:
+          go build -o bin/yatisql-${{ matrix.goos }}-${{ matrix.goarch }}
+          ./cmd/yatisql
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        if: matrix.goos == 'linux'
         with:
           name: yatisql-${{ matrix.goos }}-${{ matrix.goarch }}
           path: bin/yatisql-${{ matrix.goos }}-${{ matrix.goarch }}
           if-no-files-found: ignore
-

@@ -22,7 +22,7 @@ func SanitizeColumnName(name string) string {
 	}
 
 	sanitized := string(result)
-	if len(sanitized) > 0 && sanitized[0] >= '0' && sanitized[0] <= '9' {
+	if sanitized != "" && sanitized[0] >= '0' && sanitized[0] <= '9' {
 		sanitized = "col_" + sanitized
 	}
 

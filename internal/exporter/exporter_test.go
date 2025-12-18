@@ -155,4 +155,3 @@ func TestExecuteQueryToGzip(t *testing.T) {
 		t.Error("Expected non-empty gzip file")
 	}
 }
-

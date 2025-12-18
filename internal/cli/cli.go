@@ -6,17 +6,17 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+
 	"github.com/yatisql/yatisql-go/internal/config"
 	"github.com/yatisql/yatisql-go/internal/database"
 	"github.com/yatisql/yatisql-go/internal/exporter"
 	"github.com/yatisql/yatisql-go/internal/importer"
-	"github.com/spf13/cobra"
 )
 
 var (
 	// Colors for output
 	successColor = color.New(color.FgGreen, color.Bold)
-	errorColor   = color.New(color.FgRed, color.Bold)
 	infoColor    = color.New(color.FgCyan)
 	warnColor    = color.New(color.FgYellow)
 )
