@@ -97,7 +97,7 @@ func ParseFile(input FileInput) *ParsedFile {
 }
 
 // WriteToDatabase writes a parsed file to the database.
-// This function should be called serially to avoid SQLite locking issues.
+// This function is safe to call concurrently for different tables when WAL mode is enabled.
 func WriteToDatabase(db *sql.DB, parsed *ParsedFile) (*Result, error) {
 	if parsed.Error != nil {
 		return nil, parsed.Error
@@ -127,10 +127,19 @@ func WriteToDatabase(db *sql.DB, parsed *ParsedFile) (*Result, error) {
 	}, nil
 }
 
+// ProgressCallback is called to report progress during concurrent import.
+type ProgressCallback func(event string, filePath, tableName string, details ...interface{})
+
 // ImportConcurrent imports multiple files concurrently.
 // Files are parsed in parallel, then written to the database sequentially.
 // Returns results for successful imports and a combined error for any failures.
-func ImportConcurrent(db *sql.DB, inputs []FileInput, debug bool) ([]*Result, error) {
+// If progressCallback is provided, it will be called with progress events:
+//   - "parse_start": when parsing starts for a file
+//   - "parse_complete": when parsing completes (details[0] = rowCount, details[1] = duration)
+//   - "parse_error": when parsing fails (details[0] = error)
+//   - "write_start": when writing to database starts
+//   - "write_complete": when writing completes (details[0] = rowCount)
+func ImportConcurrent(db *sql.DB, inputs []FileInput, debug bool, progressCallback ProgressCallback) ([]*Result, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -156,6 +165,9 @@ func ImportConcurrent(db *sql.DB, inputs []FileInput, debug bool) ([]*Result, er
 
 				// Create trace region for each file parse
 				trace.WithRegion(ctx, fmt.Sprintf("parse_file_%s", inp.FilePath), func() {
+					if progressCallback != nil {
+						progressCallback("parse_start", inp.FilePath, inp.TableName)
+					}
 					if debug {
 						log.Printf("[GOROUTINE-%d] Starting parse of %s", idx, inp.FilePath)
 					}
@@ -164,11 +176,20 @@ func ImportConcurrent(db *sql.DB, inputs []FileInput, debug bool) ([]*Result, er
 					parsedFiles[idx] = ParseFile(inp)
 					duration := time.Since(start)
 
-					if debug {
-						if parsedFiles[idx].Error != nil {
+					if parsedFiles[idx].Error != nil {
+						if progressCallback != nil {
+							progressCallback("parse_error", inp.FilePath, inp.TableName, parsedFiles[idx].Error)
+						}
+						if debug {
 							log.Printf("[GOROUTINE-%d] Finished parse of %s (ERROR: %v) in %v", idx, inp.FilePath, parsedFiles[idx].Error, duration)
-						} else {
-							log.Printf("[GOROUTINE-%d] Finished parse of %s (%d rows) in %v", idx, inp.FilePath, len(parsedFiles[idx].Rows), duration)
+						}
+					} else {
+						rowCount := len(parsedFiles[idx].Rows)
+						if progressCallback != nil {
+							progressCallback("parse_complete", inp.FilePath, inp.TableName, rowCount, duration)
+						}
+						if debug {
+							log.Printf("[GOROUTINE-%d] Finished parse of %s (%d rows) in %v", idx, inp.FilePath, rowCount, duration)
 						}
 					}
 				})
@@ -180,41 +201,62 @@ func ImportConcurrent(db *sql.DB, inputs []FileInput, debug bool) ([]*Result, er
 	parseDuration := time.Since(startTime)
 
 	if debug {
-		log.Printf("[CONCURRENT] All files parsed in %v, starting sequential database writes", parseDuration)
+		log.Printf("[CONCURRENT] All files parsed in %v, starting concurrent database writes", parseDuration)
 	}
 
-	// Write to database sequentially and collect errors
+	// Write to database concurrently (each table can be written independently)
 	var results []*Result
 	var errs []error
+	var resultsMu sync.Mutex
+	var writeWg sync.WaitGroup
 
 	writeStart := time.Now()
-	trace.WithRegion(ctx, "sequential_write", func() {
+	trace.WithRegion(ctx, "concurrent_write", func() {
 		for _, parsed := range parsedFiles {
-			trace.WithRegion(ctx, fmt.Sprintf("write_db_%s", parsed.FilePath), func() {
-				if debug {
-					log.Printf("[SEQUENTIAL] Writing %s to database", parsed.FilePath)
-				}
+			writeWg.Add(1)
+			go func(p *ParsedFile) {
+				defer writeWg.Done()
 
-				result, err := WriteToDatabase(db, parsed)
-				if err != nil {
-					errs = append(errs, fmt.Errorf("%s: %w", parsed.FilePath, err))
-					if debug {
-						log.Printf("[SEQUENTIAL] Failed to write %s: %v", parsed.FilePath, err)
+				trace.WithRegion(ctx, fmt.Sprintf("write_db_%s", p.FilePath), func() {
+					if progressCallback != nil {
+						progressCallback("write_start", p.FilePath, p.TableName)
 					}
-				} else {
-					results = append(results, result)
 					if debug {
-						log.Printf("[SEQUENTIAL] Successfully wrote %s (%d rows)", parsed.FilePath, result.RowCount)
+						log.Printf("[CONCURRENT-WRITE] Writing %s to database", p.FilePath)
 					}
-				}
-			})
+
+					result, err := WriteToDatabase(db, p)
+
+					resultsMu.Lock()
+					if err != nil {
+						errs = append(errs, fmt.Errorf("%s: %w", p.FilePath, err))
+						if progressCallback != nil {
+							progressCallback("write_error", p.FilePath, p.TableName, err)
+						}
+						if debug {
+							log.Printf("[CONCURRENT-WRITE] Failed to write %s: %v", p.FilePath, err)
+						}
+					} else {
+						results = append(results, result)
+						if progressCallback != nil {
+							progressCallback("write_complete", p.FilePath, p.TableName, result.RowCount)
+						}
+						if debug {
+							log.Printf("[CONCURRENT-WRITE] Successfully wrote %s (%d rows)", p.FilePath, result.RowCount)
+						}
+					}
+					resultsMu.Unlock()
+				})
+			}(parsed)
 		}
+		writeWg.Wait()
 	})
 	writeDuration := time.Since(writeStart)
 
 	if debug {
 		log.Printf("[CONCURRENT] All database writes completed in %v", writeDuration)
 		log.Printf("[CONCURRENT] Total time: parse=%v, write=%v, total=%v", parseDuration, writeDuration, time.Since(startTime))
+		log.Printf("[CONCURRENT] Writes were concurrent (WAL mode enabled)")
 	}
 
 	return results, errors.Join(errs...)

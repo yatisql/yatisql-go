@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"runtime/trace"
+	"sync"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -164,19 +166,39 @@ func run(cfg *config.Config, traceDebug bool) error {
 				Delimiter: delimiter,
 				HasHeader: cfg.HasHeader,
 			}
-			infoColor.Printf("Importing %s → table '%s'\n", inputFile, tableName)
 		}
 
-		// Import all files concurrently
-		results, err := importer.ImportConcurrent(db.DB, inputs, traceDebug)
+		// Import all files concurrently with progress reporting
+		var mu sync.Mutex
+		progressCallback := func(event string, filePath, tableName string, details ...interface{}) {
+			mu.Lock()
+			defer mu.Unlock()
+
+			switch event {
+			case "parse_start":
+				infoColor.Printf("  [→] Parsing %s → table '%s'...\n", filePath, tableName)
+			case "parse_complete":
+				rowCount := details[0].(int)
+				duration := details[1].(time.Duration)
+				infoColor.Printf("  [✓] Parsed %s (%d rows) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
+			case "parse_error":
+				err := details[0].(error)
+				warnColor.Printf("  [✗] Parse failed: %s - %v\n", filePath, err)
+			case "write_start":
+				infoColor.Printf("  [→] Writing %s to database...\n", filePath)
+			case "write_complete":
+				rowCount := details[0].(int)
+				infoColor.Printf("  [✓] Imported %d rows into '%s'\n", rowCount, tableName)
+				successColor.Printf("✓ Successfully imported table '%s'\n", tableName)
+			case "write_error":
+				err := details[0].(error)
+				warnColor.Printf("  [✗] Write failed: %s - %v\n", filePath, err)
+			}
+		}
+
+		results, err := importer.ImportConcurrent(db.DB, inputs, traceDebug, progressCallback)
 		if err != nil {
 			warnColor.Fprintf(os.Stderr, "Warning: some imports failed:\n%v\n", err)
-		}
-
-		// Report successful imports
-		for _, result := range results {
-			infoColor.Printf("  Imported %d rows into '%s'\n", result.RowCount, result.TableName)
-			successColor.Printf("✓ Successfully imported table '%s'\n", result.TableName)
 		}
 
 		// If all imports failed, return the error

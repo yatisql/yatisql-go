@@ -140,7 +140,7 @@ func TestImportConcurrent(t *testing.T) {
 		{FilePath: ordersPath, TableName: "orders", Delimiter: ',', HasHeader: true},
 	}
 
-	results, err := ImportConcurrent(db.DB, inputs, false)
+	results, err := ImportConcurrent(db.DB, inputs, false, nil)
 	if err != nil {
 		t.Fatalf("ImportConcurrent() error = %v", err)
 	}
@@ -192,7 +192,7 @@ func TestImportConcurrentPartialFailure(t *testing.T) {
 		{FilePath: nonExistentPath, TableName: "missing", Delimiter: ',', HasHeader: true},
 	}
 
-	results, err := ImportConcurrent(db.DB, inputs, false)
+	results, err := ImportConcurrent(db.DB, inputs, false, nil)
 
 	// Should have one successful result
 	if len(results) != 1 {
@@ -221,7 +221,7 @@ func TestImportConcurrentEmpty(t *testing.T) {
 	}
 	defer db.Close()
 
-	results, err := ImportConcurrent(db.DB, []FileInput{}, false)
+	results, err := ImportConcurrent(db.DB, []FileInput{}, false, nil)
 	if err != nil {
 		t.Errorf("ImportConcurrent() with empty input error = %v", err)
 	}
