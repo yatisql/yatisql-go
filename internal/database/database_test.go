@@ -156,4 +156,3 @@ func TestInsertBatchEmpty(t *testing.T) {
 		t.Fatalf("InsertBatch() with empty batch error = %v", err)
 	}
 }
-

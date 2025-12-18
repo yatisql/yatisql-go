@@ -93,7 +93,7 @@ func TestImportWithoutHeader(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "noheader.csv")
 	content := "1,Alice,30\n2,Bob,25\n3,Charlie,35\n"
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestImportWithoutHeader(t *testing.T) {
 	}
 
 	// Verify column names are auto-generated
-	rows, err := db.DB.Query("SELECT col1, col2, col3 FROM test LIMIT 1")
+	rows, err := db.Query("SELECT col1, col2, col3 FROM test LIMIT 1")
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
 	}
@@ -142,4 +142,3 @@ func findTestdata(t *testing.T) string {
 	t.Skip("testdata directory not found")
 	return ""
 }
-

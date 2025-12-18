@@ -11,6 +11,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	var (
 		rows       = flag.Int("rows", 1000000, "Number of rows to generate")
 		cols       = flag.Int("cols", 10, "Number of columns")
@@ -22,26 +29,14 @@ func main() {
 	)
 	flag.Parse()
 
-	rand.Seed(*seed)
+	rng := rand.New(rand.NewSource(*seed))
 
 	// Open output file
-	var file *os.File
-	var err error
-	if *compress {
-		file, err = os.Create(*output)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating file: %v\n", err)
-			os.Exit(1)
-		}
-		defer file.Close()
-	} else {
-		file, err = os.Create(*output)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating file: %v\n", err)
-			os.Exit(1)
-		}
-		defer file.Close()
+	file, err := os.Create(*output)
+	if err != nil {
+		return fmt.Errorf("creating file: %w", err)
 	}
+	defer file.Close()
 
 	// Create writer (with or without compression)
 	var writer *csv.Writer
@@ -61,8 +56,7 @@ func main() {
 		header[i] = fmt.Sprintf("col%d", i+1)
 	}
 	if err := writer.Write(header); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing header: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("writing header: %w", err)
 	}
 
 	// Generate rows
@@ -74,13 +68,13 @@ func main() {
 			// Generate varied data types
 			switch j % 4 {
 			case 0: // Integer
-				row[j] = fmt.Sprintf("%d", rand.Intn(1000000))
+				row[j] = fmt.Sprintf("%d", rng.Intn(1000000))
 			case 1: // Float
-				row[j] = fmt.Sprintf("%.2f", rand.Float64()*1000)
+				row[j] = fmt.Sprintf("%.2f", rng.Float64()*1000)
 			case 2: // String
 				row[j] = fmt.Sprintf("value_%d_%d", i, j)
 			case 3: // Mixed
-				row[j] = fmt.Sprintf("id_%d", rand.Intn(10000))
+				row[j] = fmt.Sprintf("id_%d", rng.Intn(10000))
 			}
 		}
 		batch = append(batch, row)
@@ -88,19 +82,16 @@ func main() {
 		// Write batch periodically and flush to disk
 		if len(batch) >= *batchSize {
 			if err := writer.WriteAll(batch); err != nil {
-				fmt.Fprintf(os.Stderr, "Error writing batch: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("writing batch: %w", err)
 			}
 			writer.Flush() // Flush CSV buffer
 			if gzWriter != nil {
 				if err := gzWriter.Flush(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error flushing gzip: %v\n", err)
-					os.Exit(1)
+					return fmt.Errorf("flushing gzip: %w", err)
 				}
 			}
 			if err := file.Sync(); err != nil {
-				fmt.Fprintf(os.Stderr, "Error syncing to disk: %v\n", err)
-				os.Exit(1)
+				return fmt.Errorf("syncing to disk: %w", err)
 			}
 			batch = batch[:0]
 			if (i+1)%*flushEvery == 0 {
@@ -112,15 +103,15 @@ func main() {
 	// Write remaining rows
 	if len(batch) > 0 {
 		if err := writer.WriteAll(batch); err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing final batch: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("writing final batch: %w", err)
 		}
 		writer.Flush()
 		if gzWriter != nil {
-			gzWriter.Flush()
+			_ = gzWriter.Flush()
 		}
-		file.Sync()
+		_ = file.Sync()
 	}
 
 	fmt.Fprintf(os.Stderr, "Successfully generated %d rows with %d columns in %s\n", *rows, *cols, *output)
+	return nil
 }
