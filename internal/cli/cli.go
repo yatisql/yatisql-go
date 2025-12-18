@@ -272,14 +272,26 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 				}
 			case "index_start":
 				indexCols := details[0].([]string)
-				infoColor.Printf("  [→] Creating %d index(es) on '%s'...\n", len(indexCols), tableName)
+				if !showProgress || !isTerminal() {
+					infoColor.Printf("  [→] Creating %d index(es) on '%s'...\n", len(indexCols), tableName)
+				} else {
+					tracker.StartIndex(filePath, tableName, len(indexCols))
+				}
 			case "index_complete":
 				indexCount := details[0].(int)
 				duration := details[1].(time.Duration)
-				successColor.Printf("  [✓] Created %d index(es) on '%s' in %v\n", indexCount, tableName, duration.Round(time.Millisecond))
+				if !showProgress || !isTerminal() {
+					successColor.Printf("  [✓] Created %d index(es) on '%s' in %v\n", indexCount, tableName, duration.Round(time.Millisecond))
+				} else {
+					tracker.FinishIndex(filePath, tableName, indexCount, duration)
+				}
 			case "index_error":
 				err := details[0].(error)
-				warnColor.Printf("  [✗] Index creation failed on '%s': %v\n", tableName, err)
+				if !showProgress || !isTerminal() {
+					warnColor.Printf("  [✗] Index creation failed on '%s': %v\n", tableName, err)
+				} else {
+					tracker.Error(filePath, err, "index")
+				}
 			}
 		}
 

@@ -268,6 +268,39 @@ func (pt *ProgressTracker) FinishWrite(filePath, tableName string, rows int64) {
 	}
 }
 
+// StartIndex starts tracking index creation for a table.
+func (pt *ProgressTracker) StartIndex(filePath, tableName string, indexCount int) {
+	if !pt.enabled {
+		return
+	}
+
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	bar := &barState{
+		key:       "index:" + filePath,
+		label:     tableName + " (indexing)",
+		total:     0, // Unknown
+		startTime: time.Now(),
+	}
+	pt.bars = append(pt.bars, bar)
+}
+
+// FinishIndex finishes index creation.
+func (pt *ProgressTracker) FinishIndex(filePath, tableName string, indexCount int, duration time.Duration) {
+	if !pt.enabled {
+		return
+	}
+
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+
+	if bar := pt.findBar("index:" + filePath); bar != nil {
+		bar.done = true
+		bar.doneMsg = color.GreenString("  ✓ Created %d index(es) on '%s' in %v", indexCount, tableName, duration.Round(time.Millisecond))
+	}
+}
+
 // Error handles errors.
 func (pt *ProgressTracker) Error(filePath string, err error, phase string) {
 	if !pt.enabled {
