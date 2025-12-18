@@ -67,15 +67,15 @@ yatisql -i data.csv -d temp.db -t data -q "SELECT name, age FROM data WHERE age 
 
 ## Command Line Options
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--input` | `-i` | Input CSV/TSV file path(s), comma-separated for multiple files (supports .gz compression) |
-| `--output` | `-o` | Output CSV/TSV file path (default: stdout, supports .gz compression) |
-| `--query` | `-q` | SQL query to execute |
-| `--db` | `-d` | SQLite database path (default: temporary file, auto-deleted after execution). Supports directory paths like `db/mydata.db` |
-| `--table` | `-t` | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.) |
-| `--header` | `-H` | Input file has header row (default: `true`) |
-| `--delimiter` | | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`) |
+| Flag          | Short | Description                                                                                                                |
+| ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------- |
+| `--input`     | `-i`  | Input CSV/TSV file path(s), comma-separated for multiple files (supports .gz compression)                                  |
+| `--output`    | `-o`  | Output CSV/TSV file path (default: stdout, supports .gz compression)                                                       |
+| `--query`     | `-q`  | SQL query to execute                                                                                                       |
+| `--db`        | `-d`  | SQLite database path (default: temporary file, auto-deleted after execution). Supports directory paths like `db/mydata.db` |
+| `--table`     | `-t`  | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.)                                          |
+| `--header`    | `-H`  | Input file has header row (default: `true`)                                                                                |
+| `--delimiter` |       | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`)                                                               |
 
 ### Database Behavior
 
