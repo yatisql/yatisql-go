@@ -58,7 +58,7 @@ jobs:
     needs: [test, lint]
     strategy:
       matrix:
-        goos: [linux]
+        goos: [linux, mac]
         goarch: [amd64, arm64]
     steps:
       - name: Checkout code
