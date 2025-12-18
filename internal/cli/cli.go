@@ -146,7 +146,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	return run(cfg, traceDebug, showProgress)
 }
 
-func run(cfg *config.Config, traceDebug bool, showProgress bool) error {
+func run(cfg *config.Config, traceDebug, showProgress bool) error {
 	// Show ASCII art at the start if we have input files
 	if len(cfg.InputFiles) > 0 && isTerminal() {
 		PrintASCIIArt()
@@ -239,9 +239,10 @@ func run(cfg *config.Config, traceDebug bool, showProgress bool) error {
 			case "write_start":
 				rowCount := int64(0)
 				if len(details) > 0 {
-					if rc, ok := details[0].(int); ok {
+					switch rc := details[0].(type) {
+					case int:
 						rowCount = int64(rc)
-					} else if rc, ok := details[0].(int64); ok {
+					case int64:
 						rowCount = rc
 					}
 				}

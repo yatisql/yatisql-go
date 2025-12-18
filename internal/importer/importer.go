@@ -242,7 +242,7 @@ func ImportConcurrent(db *sql.DB, inputs []FileInput, debug bool, progressCallba
 
 // importFileStreaming streams a file: parses in batches and writes immediately.
 // This keeps memory usage low - only one batch is in memory at a time.
-func importFileStreaming(db *sql.DB, input FileInput, progressCallback ProgressCallback, parseProgressCallback ParseProgressCallback, writeProgressCallback WriteProgressCallback, debug bool, ctx context.Context) (*Result, error) {
+func importFileStreaming(db *sql.DB, input FileInput, progressCallback ProgressCallback, parseProgressCallback ParseProgressCallback, writeProgressCallback WriteProgressCallback, _ bool, _ context.Context) (*Result, error) {
 	file, err := OpenFile(input.FilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
