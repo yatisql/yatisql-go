@@ -1,0 +1,6 @@
+/target
+.idea/
+yatisql.iml
+testdata/
+bin/
+db/
