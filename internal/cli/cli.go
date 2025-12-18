@@ -86,6 +86,7 @@ func init() {
 	rootCmd.Flags().String("trace", "", "Write execution trace to file (use 'go tool trace <file>' to view)")
 	rootCmd.Flags().Bool("trace-debug", false, "Enable debug logging for concurrent execution")
 	rootCmd.Flags().BoolP("progress", "p", false, "Show progress bars for file import operations")
+	rootCmd.Flags().StringSliceP("index", "x", []string{}, "Column(s) to create indexes on, comma-separated")
 }
 
 // Execute runs the root command.
@@ -107,6 +108,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	traceFile, _ := cmd.Flags().GetString("trace")
 	traceDebug, _ := cmd.Flags().GetBool("trace-debug")
 	showProgress, _ := cmd.Flags().GetBool("progress")
+	indexColumns, _ := cmd.Flags().GetStringSlice("index")
 
 	cfg.InputFiles = inputFiles
 	cfg.TableNames = tableNames
@@ -115,6 +117,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	cfg.DBPath = dbPath
 	cfg.HasHeader = hasHeader
 	cfg.KeepDB = cmd.Flags().Changed("db")
+	cfg.IndexColumns = indexColumns
 
 	// Parse delimiter
 	delimiter, err := config.ParseDelimiter(delimiterStr)
@@ -194,10 +197,11 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 			}
 
 			inputs[i] = importer.FileInput{
-				FilePath:  inputFile,
-				TableName: tableName,
-				Delimiter: delimiter,
-				HasHeader: cfg.HasHeader,
+				FilePath:     inputFile,
+				TableName:    tableName,
+				Delimiter:    delimiter,
+				HasHeader:    cfg.HasHeader,
+				IndexColumns: cfg.IndexColumns,
 			}
 		}
 
@@ -266,6 +270,16 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 				} else {
 					tracker.Error(filePath, err, "Write")
 				}
+			case "index_start":
+				indexCols := details[0].([]string)
+				infoColor.Printf("  [→] Creating %d index(es) on '%s'...\n", len(indexCols), tableName)
+			case "index_complete":
+				indexCount := details[0].(int)
+				duration := details[1].(time.Duration)
+				successColor.Printf("  [✓] Created %d index(es) on '%s' in %v\n", indexCount, tableName, duration.Round(time.Millisecond))
+			case "index_error":
+				err := details[0].(error)
+				warnColor.Printf("  [✗] Index creation failed on '%s': %v\n", tableName, err)
 			}
 		}
 

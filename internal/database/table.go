@@ -89,3 +89,101 @@ func InsertBatch(db *sql.DB, tableName string, headers []string, batch [][]strin
 
 	return nil
 }
+
+// GetTableColumns returns the column names for a table.
+func GetTableColumns(db *sql.DB, tableName string) ([]string, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table info: %w", err)
+	}
+	defer rows.Close()
+
+	var columns []string
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue interface{}
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return nil, fmt.Errorf("failed to scan column info: %w", err)
+		}
+		columns = append(columns, name)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading columns: %w", err)
+	}
+
+	return columns, nil
+}
+
+// ValidateColumns checks if all specified columns exist in the table.
+// Returns an error listing any missing columns.
+func ValidateColumns(db *sql.DB, tableName string, columns []string) error {
+	tableColumns, err := GetTableColumns(db, tableName)
+	if err != nil {
+		return err
+	}
+
+	// Build a set of existing columns (case-insensitive)
+	existing := make(map[string]bool)
+	for _, col := range tableColumns {
+		existing[strings.ToLower(col)] = true
+	}
+
+	// Check for missing columns
+	var missing []string
+	for _, col := range columns {
+		sanitized := SanitizeColumnName(col)
+		if !existing[strings.ToLower(sanitized)] {
+			missing = append(missing, col)
+		}
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("columns not found in table '%s': %s", tableName, strings.Join(missing, ", "))
+	}
+
+	return nil
+}
+
+// CreateIndex creates an index on the specified column for a table.
+// Returns an error if the column doesn't exist.
+func CreateIndex(db *sql.DB, tableName, column string) error {
+	// Validate column exists first
+	if err := ValidateColumns(db, tableName, []string{column}); err != nil {
+		return err
+	}
+
+	sanitizedColumn := SanitizeColumnName(column)
+	indexName := fmt.Sprintf("idx_%s_%s", tableName, sanitizedColumn)
+
+	createSQL := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)", indexName, tableName, sanitizedColumn)
+	if _, err := db.Exec(createSQL); err != nil {
+		return fmt.Errorf("failed to create index on %s.%s: %w", tableName, column, err)
+	}
+
+	return nil
+}
+
+// CreateIndexes creates indexes on multiple columns for a table.
+// Validates all columns exist before creating any indexes.
+func CreateIndexes(db *sql.DB, tableName string, columns []string) error {
+	if len(columns) == 0 {
+		return nil
+	}
+
+	// Validate all columns exist first (fail early)
+	if err := ValidateColumns(db, tableName, columns); err != nil {
+		return err
+	}
+
+	// Create indexes
+	for _, column := range columns {
+		if err := CreateIndex(db, tableName, column); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

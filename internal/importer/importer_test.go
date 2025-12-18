@@ -271,6 +271,72 @@ func TestParseFileError(t *testing.T) {
 	}
 }
 
+func TestImportWithIndexColumns(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	inputs := []FileInput{
+		{
+			FilePath:     csvPath,
+			TableName:    "test",
+			Delimiter:    ',',
+			HasHeader:    true,
+			IndexColumns: []string{"id", "name"},
+		},
+	}
+
+	results, err := ImportConcurrent(db.DB, inputs, false, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ImportConcurrent() error = %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	// Verify indexes were created
+	var indexCount int
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='test'").Scan(&indexCount)
+	if err != nil {
+		t.Fatalf("Query index error = %v", err)
+	}
+	if indexCount != 2 {
+		t.Errorf("Expected 2 indexes, got %d", indexCount)
+	}
+}
+
+func TestImportWithInvalidIndexColumn(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	inputs := []FileInput{
+		{
+			FilePath:     csvPath,
+			TableName:    "test",
+			Delimiter:    ',',
+			HasHeader:    true,
+			IndexColumns: []string{"nonexistent_column"},
+		},
+	}
+
+	_, err = ImportConcurrent(db.DB, inputs, false, nil, nil, nil)
+	if err == nil {
+		t.Error("Expected error for nonexistent index column, got nil")
+	}
+}
+
 // findTestdata locates the testdata directory relative to the test file.
 func findTestdata(t *testing.T) string {
 	// Try different relative paths
