@@ -1,6 +1,46 @@
-/target
-.idea/
-yatisql.iml
-testdata/
+# Binaries
 bin/
-db/
+yatisql
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+coverage.txt
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Build artifacts
+dist/
+
+# GoReleaser
+/dist/
+
+# Test output
+testdata/*.db
+data/

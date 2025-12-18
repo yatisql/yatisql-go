@@ -1,5 +1,9 @@
 # yatisql-go
-yet another tabular inefficient SQL in Golang
+
+[![CI](https://github.com/yatisql/yatisql-go/actions/workflows/ci.yaml/badge.svg)](https://github.com/yatisql/yatisql-go/actions/workflows/ci.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/yatisql/yatisql-go)](https://goreportcard.com/report/github.com/yatisql/yatisql-go)
+
+**yet another tabular inefficient SQL in Golang**
 
 A simple Go CLI tool that streams CSV/TSV files into SQLite, executes SQL queries, and exports results back to CSV/TSV format.
 
@@ -17,10 +21,29 @@ A simple Go CLI tool that streams CSV/TSV files into SQLite, executes SQL querie
 
 ## Installation
 
+### From Source
+
 ```bash
-go mod download
-go build -o yatisql main.go
+# Clone the repository
+git clone https://github.com/yatisql/yatisql-go.git
+cd yatisql-go
+
+# Build using Make
+make build
+
+# Or install to GOPATH/bin
+make install
 ```
+
+### Using Go Install
+
+```bash
+go install github.com/yatisql/yatisql-go/cmd/yatisql@latest
+```
+
+### From Releases
+
+Download pre-built binaries from the [Releases](https://github.com/yatisql/yatisql-go/releases) page.
 
 ## Usage
 
@@ -148,6 +171,88 @@ yatisql -i data.csv -d db/production/data.db -q "SELECT * FROM data"
 yatisql -d db/production/data.db -q "SELECT COUNT(*) FROM data"
 ```
 
+## Project Structure
+
+```
+yatisql-go/
+├── cmd/
+│   └── yatisql/
+│       └── main.go              # Entry point
+├── internal/
+│   ├── cli/                     # Cobra command setup, flags
+│   ├── config/                  # Configuration types
+│   ├── database/                # SQLite operations
+│   ├── exporter/                # Query execution, CSV export
+│   └── importer/                # CSV/TSV import, compression
+├── scripts/                     # Utility scripts
+├── testdata/                    # Test fixtures
+├── .github/workflows/           # CI/CD pipelines
+├── .gitignore
+├── .golangci.yaml               # Linter configuration
+├── .goreleaser.yaml             # Release automation
+├── Makefile                     # Build automation
+├── go.mod
+├── go.sum
+├── LICENSE
+└── README.md
+```
+
+## Development
+
+### Prerequisites
+
+- Go 1.21 or later
+- SQLite3 (for CGO)
+- golangci-lint (optional, for linting)
+
+### Building
+
+```bash
+# Build binary
+make build
+
+# Run tests
+make test
+
+# Run tests with coverage
+make test-coverage
+
+# Run linter
+make lint
+
+# Clean build artifacts
+make clean
+
+# Show all available targets
+make help
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run tests with race detection and coverage
+go test -v -race -cover ./...
+
+# Run tests for a specific package
+go test -v ./internal/database/...
+```
+
+### Code Quality
+
+```bash
+# Format code
+make fmt
+
+# Run linter
+make lint
+
+# Run linter with auto-fix
+make lint-fix
+```
+
 ## Notes
 
 - **Batch processing**: Large files are processed in batches (10,000 rows at a time) for memory efficiency
@@ -168,3 +273,7 @@ yatisql --help
 # Or
 yatisql -h
 ```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
