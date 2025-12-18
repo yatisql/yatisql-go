@@ -1,6 +1,6 @@
 # Binaries
 bin/
-yatisql
+/yatisql
 *.exe
 *.exe~
 *.dll
