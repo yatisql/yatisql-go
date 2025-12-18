@@ -1,0 +1,106 @@
+# GoReleaser configuration
+# See: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: yatisql
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: yatisql
+    main: ./cmd/yatisql
+    binary: yatisql
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.buildTime={{.Date}}
+    # Cross-compilation for CGO requires special setup
+    # For now, we build native only in CI
+    ignore:
+      - goos: darwin
+        goarch: amd64
+      - goos: darwin
+        goarch: arm64
+
+  # Native macOS build (run on macOS runner)
+  - id: yatisql-macos
+    main: ./cmd/yatisql
+    binary: yatisql
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.buildTime={{.Date}}
+    hooks:
+      post:
+        - upx --best --lzma {{ .Path }} || true
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: yatisql
+    name: yatisql-go
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+
+# Homebrew formula (optional, uncomment if you have a tap)
+# brews:
+#   - repository:
+#       owner: george-nikitin
+#       name: homebrew-tap
+#     folder: Formula
+#     homepage: https://github.com/george-nikitin/yatisql-go
+#     description: "Query CSV/TSV files using SQL"
+#     license: MIT
+
