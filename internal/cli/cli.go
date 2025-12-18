@@ -24,10 +24,9 @@ var (
 	warnColor    = color.New(color.FgYellow)
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "yatisql",
-	Short: "Query CSV/TSV files using SQL",
-	Long: `yatisql - yet another tabular inefficient SQL
+// getHelpWithASCII returns help text with ASCII art.
+func getHelpWithASCII() string {
+	return `yatisql - yet another tabular inefficient SQL
 
 A simple tool that streams CSV/TSV files into SQLite, executes SQL queries,
 and exports results back to CSV/TSV format.
@@ -37,7 +36,34 @@ Features:
   • Execute SQL queries on imported data
   • Support for compressed files (.gz, .bz2)
   • JOIN multiple tables
-  • Automatic delimiter detection`,
+  • Automatic delimiter detection`
+}
+
+// getHelpText returns plain help text without ASCII art.
+func getHelpText() string {
+	return `yatisql - yet another tabular inefficient SQL
+
+A simple tool that streams CSV/TSV files into SQLite, executes SQL queries,
+and exports results back to CSV/TSV format.
+
+Features:
+  • Stream large CSV/TSV files efficiently
+  • Execute SQL queries on imported data
+  • Support for compressed files (.gz, .bz2)
+  • JOIN multiple tables
+  • Automatic delimiter detection`
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "yatisql",
+	Short: "Query CSV/TSV files using SQL",
+	Long: func() string {
+		// Show ASCII art in help text if terminal
+		if isTerminal() {
+			return getHelpWithASCII()
+		}
+		return getHelpText()
+	}(),
 	Example: `  # Import and query in one command
   yatisql -i data.csv -q "SELECT * FROM data LIMIT 10" -o results.csv
 
@@ -59,6 +85,7 @@ func init() {
 	rootCmd.Flags().String("delimiter", "auto", "Field delimiter: 'comma', 'tab', or 'auto' (default: auto)")
 	rootCmd.Flags().String("trace", "", "Write execution trace to file (use 'go tool trace <file>' to view)")
 	rootCmd.Flags().Bool("trace-debug", false, "Enable debug logging for concurrent execution")
+	rootCmd.Flags().BoolP("progress", "p", false, "Show progress bars for file import operations")
 }
 
 // Execute runs the root command.
@@ -79,6 +106,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	delimiterStr, _ := cmd.Flags().GetString("delimiter")
 	traceFile, _ := cmd.Flags().GetString("trace")
 	traceDebug, _ := cmd.Flags().GetBool("trace-debug")
+	showProgress, _ := cmd.Flags().GetBool("progress")
 
 	cfg.InputFiles = inputFiles
 	cfg.TableNames = tableNames
@@ -115,10 +143,15 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		infoColor.Printf("Tracing execution to %s (use 'go tool trace %s' to view)\n", traceFile, traceFile)
 	}
 
-	return run(cfg, traceDebug)
+	return run(cfg, traceDebug, showProgress)
 }
 
-func run(cfg *config.Config, traceDebug bool) error {
+func run(cfg *config.Config, traceDebug bool, showProgress bool) error {
+	// Show ASCII art at the start if we have input files
+	if len(cfg.InputFiles) > 0 && isTerminal() {
+		PrintASCIIArt()
+	}
+
 	// Open database
 	db, err := database.Open(cfg.DBPath)
 	if err != nil {
@@ -169,6 +202,13 @@ func run(cfg *config.Config, traceDebug bool) error {
 		}
 
 		// Import all files concurrently with progress reporting
+		var tracker *ProgressTracker
+		if showProgress && isTerminal() {
+			tracker = NewProgressTracker(true)
+		} else {
+			tracker = NewProgressTracker(false)
+		}
+
 		var mu sync.Mutex
 		progressCallback := func(event string, filePath, tableName string, details ...interface{}) {
 			mu.Lock()
@@ -176,27 +216,71 @@ func run(cfg *config.Config, traceDebug bool) error {
 
 			switch event {
 			case "parse_start":
-				infoColor.Printf("  [→] Parsing %s → table '%s'...\n", filePath, tableName)
+				if !showProgress || !isTerminal() {
+					infoColor.Printf("  [→] Parsing %s → table '%s'...\n", filePath, tableName)
+				} else {
+					tracker.StartParse(filePath, tableName)
+				}
 			case "parse_complete":
 				rowCount := details[0].(int)
 				duration := details[1].(time.Duration)
-				infoColor.Printf("  [✓] Parsed %s (%d rows) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
+				if !showProgress || !isTerminal() {
+					infoColor.Printf("  [✓] Parsed %s (%d rows) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
+				} else {
+					tracker.FinishParse(filePath, int64(rowCount), duration)
+				}
 			case "parse_error":
 				err := details[0].(error)
-				warnColor.Printf("  [✗] Parse failed: %s - %v\n", filePath, err)
+				if !showProgress || !isTerminal() {
+					warnColor.Printf("  [✗] Parse failed: %s - %v\n", filePath, err)
+				} else {
+					tracker.Error(filePath, err, "Parse")
+				}
 			case "write_start":
-				infoColor.Printf("  [→] Writing %s to database...\n", filePath)
+				rowCount := int64(0)
+				if len(details) > 0 {
+					if rc, ok := details[0].(int); ok {
+						rowCount = int64(rc)
+					} else if rc, ok := details[0].(int64); ok {
+						rowCount = rc
+					}
+				}
+				if !showProgress || !isTerminal() {
+					infoColor.Printf("  [→] Writing %s to database...\n", filePath)
+				} else {
+					tracker.StartWrite(filePath, tableName, rowCount)
+				}
 			case "write_complete":
 				rowCount := details[0].(int)
-				infoColor.Printf("  [✓] Imported %d rows into '%s'\n", rowCount, tableName)
-				successColor.Printf("✓ Successfully imported table '%s'\n", tableName)
+				if !showProgress || !isTerminal() {
+					infoColor.Printf("  [✓] Imported %d rows into '%s'\n", rowCount, tableName)
+					successColor.Printf("✓ Successfully imported table '%s'\n", tableName)
+				} else {
+					tracker.FinishWrite(filePath, tableName, int64(rowCount))
+				}
 			case "write_error":
 				err := details[0].(error)
-				warnColor.Printf("  [✗] Write failed: %s - %v\n", filePath, err)
+				if !showProgress || !isTerminal() {
+					warnColor.Printf("  [✗] Write failed: %s - %v\n", filePath, err)
+				} else {
+					tracker.Error(filePath, err, "Write")
+				}
 			}
 		}
 
-		results, err := importer.ImportConcurrent(db.DB, inputs, traceDebug, progressCallback)
+		parseProgressCallback := func(filePath string, rowsRead int64) {
+			if showProgress && isTerminal() {
+				tracker.UpdateParse(filePath, rowsRead)
+			}
+		}
+
+		writeProgressCallback := func(filePath string, rowsWritten int64) {
+			if showProgress && isTerminal() {
+				tracker.UpdateWrite(filePath, rowsWritten)
+			}
+		}
+
+		results, err := importer.ImportConcurrent(db.DB, inputs, traceDebug, progressCallback, parseProgressCallback, writeProgressCallback)
 		if err != nil {
 			warnColor.Fprintf(os.Stderr, "Warning: some imports failed:\n%v\n", err)
 		}

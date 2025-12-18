@@ -34,7 +34,7 @@ func TestEndToEndImportAndQuery(t *testing.T) {
 		Delimiter:  ',',
 	}
 
-	if err := run(cfg, false); err != nil {
+	if err := run(cfg, false, false); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 
@@ -73,7 +73,7 @@ func TestEndToEndMultipleFiles(t *testing.T) {
 		Delimiter:  ',',
 	}
 
-	if err := run(cfg, false); err != nil {
+	if err := run(cfg, false, false); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestRunWithTempDatabase(t *testing.T) {
 		Delimiter:  ',',
 	}
 
-	if err := run(cfg, false); err != nil {
+	if err := run(cfg, false, false); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestRunWithPersistentDatabase(t *testing.T) {
 		KeepDB:     true,
 	}
 
-	if err := run(cfg1, false); err != nil {
+	if err := run(cfg1, false, false); err != nil {
 		t.Fatalf("run() import error = %v", err)
 	}
 
@@ -157,7 +157,7 @@ func TestRunWithPersistentDatabase(t *testing.T) {
 		KeepDB:     true,
 	}
 
-	if err := run(cfg2, false); err != nil {
+	if err := run(cfg2, false, false); err != nil {
 		t.Fatalf("run() query error = %v", err)
 	}
 
