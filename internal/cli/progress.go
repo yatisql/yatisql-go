@@ -112,7 +112,7 @@ func (pt *ProgressTracker) drawBar(bar *barState) {
 	labelColor := color.New(color.FgCyan)
 	barColor := color.New(color.FgYellow)
 
-	labelColor.Printf("%-22s ", truncate(bar.label, 22))
+	labelColor.Printf("%s ", bar.label)
 
 	if bar.total > 0 {
 		// Known total - show progress bar
@@ -293,13 +293,6 @@ func fmtNum(n int64) string {
 		return fmt.Sprintf("%.1fK", float64(n)/1000)
 	}
 	return fmt.Sprintf("%d", n)
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
 }
 
 func getShortPath(filePath string) string {
