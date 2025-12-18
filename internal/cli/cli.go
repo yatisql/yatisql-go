@@ -4,6 +4,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"runtime/trace"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -54,6 +55,8 @@ func init() {
 	rootCmd.Flags().StringP("db", "d", "", "SQLite database path (default: temporary file, deleted after execution)")
 	rootCmd.Flags().BoolP("header", "H", true, "Input file has header row")
 	rootCmd.Flags().String("delimiter", "auto", "Field delimiter: 'comma', 'tab', or 'auto' (default: auto)")
+	rootCmd.Flags().String("trace", "", "Write execution trace to file (use 'go tool trace <file>' to view)")
+	rootCmd.Flags().Bool("trace-debug", false, "Enable debug logging for concurrent execution")
 }
 
 // Execute runs the root command.
@@ -72,6 +75,8 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	dbPath, _ := cmd.Flags().GetString("db")
 	hasHeader, _ := cmd.Flags().GetBool("header")
 	delimiterStr, _ := cmd.Flags().GetString("delimiter")
+	traceFile, _ := cmd.Flags().GetString("trace")
+	traceDebug, _ := cmd.Flags().GetBool("trace-debug")
 
 	cfg.InputFiles = inputFiles
 	cfg.TableNames = tableNames
@@ -93,10 +98,25 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return run(cfg)
+	// Setup trace if requested
+	if traceFile != "" {
+		f, err := os.Create(traceFile)
+		if err != nil {
+			return fmt.Errorf("failed to create trace file: %w", err)
+		}
+		defer f.Close()
+
+		if err := trace.Start(f); err != nil {
+			return fmt.Errorf("failed to start trace: %w", err)
+		}
+		defer trace.Stop()
+		infoColor.Printf("Tracing execution to %s (use 'go tool trace %s' to view)\n", traceFile, traceFile)
+	}
+
+	return run(cfg, traceDebug)
 }
 
-func run(cfg *config.Config) error {
+func run(cfg *config.Config, traceDebug bool) error {
 	// Open database
 	db, err := database.Open(cfg.DBPath)
 	if err != nil {
@@ -119,8 +139,10 @@ func run(cfg *config.Config) error {
 		infoColor.Printf("Opening database: %s\n", db.Path)
 	}
 
-	// Import CSV/TSV files into SQLite
+	// Import CSV/TSV files into SQLite (concurrently)
 	if len(cfg.InputFiles) > 0 {
+		// Build file inputs for concurrent import
+		inputs := make([]importer.FileInput, len(cfg.InputFiles))
 		for i, inputFile := range cfg.InputFiles {
 			// Determine delimiter for this file if auto
 			delimiter := cfg.Delimiter
@@ -136,13 +158,30 @@ func run(cfg *config.Config) error {
 				tableName = fmt.Sprintf("data%d", i+1)
 			}
 
-			infoColor.Printf("Importing %s → table '%s'\n", inputFile, tableName)
-			result, err := importer.Import(db.DB, inputFile, tableName, delimiter, cfg.HasHeader)
-			if err != nil {
-				return fmt.Errorf("failed to import CSV %s: %w", inputFile, err)
+			inputs[i] = importer.FileInput{
+				FilePath:  inputFile,
+				TableName: tableName,
+				Delimiter: delimiter,
+				HasHeader: cfg.HasHeader,
 			}
-			infoColor.Printf("  Imported %d rows\n", result.RowCount)
-			successColor.Printf("✓ Successfully imported %s into table '%s'\n", inputFile, tableName)
+			infoColor.Printf("Importing %s → table '%s'\n", inputFile, tableName)
+		}
+
+		// Import all files concurrently
+		results, err := importer.ImportConcurrent(db.DB, inputs, traceDebug)
+		if err != nil {
+			warnColor.Fprintf(os.Stderr, "Warning: some imports failed:\n%v\n", err)
+		}
+
+		// Report successful imports
+		for _, result := range results {
+			infoColor.Printf("  Imported %d rows into '%s'\n", result.RowCount, result.TableName)
+			successColor.Printf("✓ Successfully imported table '%s'\n", result.TableName)
+		}
+
+		// If all imports failed, return the error
+		if len(results) == 0 && err != nil {
+			return fmt.Errorf("all imports failed: %w", err)
 		}
 	}
 
