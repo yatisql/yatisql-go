@@ -156,3 +156,133 @@ func TestInsertBatchEmpty(t *testing.T) {
 		t.Fatalf("InsertBatch() with empty batch error = %v", err)
 	}
 }
+
+func TestGetTableColumns(t *testing.T) {
+	db, err := Open("")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	headers := []string{"id", "name", "age"}
+	if err := CreateTable(db.DB, "test", headers); err != nil {
+		t.Fatalf("CreateTable() error = %v", err)
+	}
+
+	columns, err := GetTableColumns(db.DB, "test")
+	if err != nil {
+		t.Fatalf("GetTableColumns() error = %v", err)
+	}
+
+	if len(columns) != 3 {
+		t.Errorf("Expected 3 columns, got %d", len(columns))
+	}
+}
+
+func TestValidateColumns(t *testing.T) {
+	db, err := Open("")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	headers := []string{"id", "name", "age"}
+	if err := CreateTable(db.DB, "test", headers); err != nil {
+		t.Fatalf("CreateTable() error = %v", err)
+	}
+
+	// Valid columns should pass
+	if err := ValidateColumns(db.DB, "test", []string{"id", "name"}); err != nil {
+		t.Errorf("ValidateColumns() with valid columns error = %v", err)
+	}
+
+	// Invalid column should fail
+	err = ValidateColumns(db.DB, "test", []string{"id", "nonexistent"})
+	if err == nil {
+		t.Error("Expected error for nonexistent column, got nil")
+	}
+}
+
+func TestCreateIndex(t *testing.T) {
+	db, err := Open("")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	headers := []string{"id", "name", "age"}
+	if err := CreateTable(db.DB, "test", headers); err != nil {
+		t.Fatalf("CreateTable() error = %v", err)
+	}
+
+	// Insert some data
+	batch := [][]string{
+		{"1", "Alice", "30"},
+		{"2", "Bob", "25"},
+	}
+	if err := InsertBatch(db.DB, "test", headers, batch); err != nil {
+		t.Fatalf("InsertBatch() error = %v", err)
+	}
+
+	// Create index on valid column
+	if err := CreateIndex(db.DB, "test", "name"); err != nil {
+		t.Fatalf("CreateIndex() error = %v", err)
+	}
+
+	// Verify index exists
+	var indexCount int
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='test' AND name='idx_test_name'").Scan(&indexCount)
+	if err != nil {
+		t.Fatalf("Query index error = %v", err)
+	}
+	if indexCount != 1 {
+		t.Errorf("Expected 1 index, got %d", indexCount)
+	}
+}
+
+func TestCreateIndexInvalidColumn(t *testing.T) {
+	db, err := Open("")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	headers := []string{"id", "name"}
+	if err := CreateTable(db.DB, "test", headers); err != nil {
+		t.Fatalf("CreateTable() error = %v", err)
+	}
+
+	// Create index on invalid column should fail
+	err = CreateIndex(db.DB, "test", "nonexistent")
+	if err == nil {
+		t.Error("Expected error for nonexistent column, got nil")
+	}
+}
+
+func TestCreateIndexes(t *testing.T) {
+	db, err := Open("")
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	headers := []string{"id", "name", "age"}
+	if err := CreateTable(db.DB, "test", headers); err != nil {
+		t.Fatalf("CreateTable() error = %v", err)
+	}
+
+	// Create multiple indexes
+	if err := CreateIndexes(db.DB, "test", []string{"id", "name"}); err != nil {
+		t.Fatalf("CreateIndexes() error = %v", err)
+	}
+
+	// Verify indexes exist
+	var indexCount int
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='test'").Scan(&indexCount)
+	if err != nil {
+		t.Fatalf("Query index error = %v", err)
+	}
+	if indexCount != 2 {
+		t.Errorf("Expected 2 indexes, got %d", indexCount)
+	}
+}

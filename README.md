@@ -23,6 +23,7 @@ A fast Go CLI tool that streams CSV/TSV files into SQLite, executes SQL queries,
 - 📤 **Export query results** to CSV/TSV files
 - 🗜️ **Compression support** - Handles gzip-compressed files (.gz) automatically
 - 🔗 **JOIN support** - Import multiple files and join them in SQL queries
+- 🔑 **Index creation** - Create indexes on columns with `-x` flag for faster queries
 - 📈 **Progress bars** - Real-time progress with `-p` flag
 - 🎨 **Colored output** for better readability
 - ⚡ **WAL mode** - Concurrent writes to different tables
@@ -121,6 +122,7 @@ yatisql -i data.tsv --delimiter tab -q "SELECT * FROM data WHERE age > 30" -o fi
 | `--query`       | `-q`  | SQL query to execute                                                                      |
 | `--db`          | `-d`  | SQLite database path (default: temporary file, auto-deleted after execution)              |
 | `--table`       | `-t`  | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.)         |
+| `--index`       | `-x`  | Column(s) to create indexes on, comma-separated (validates columns exist early)           |
 | `--header`      | `-H`  | Input file has header row (default: `true`)                                               |
 | `--delimiter`   |       | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`)                              |
 | `--progress`    | `-p`  | Show progress bars for file import operations                                             |
@@ -192,6 +194,35 @@ yatisql -i data.csv -q "SELECT * FROM data" -o results.csv.gz
 
 # Chain compressed files
 yatisql -i data1.csv.gz,data2.csv.gz -t table1,table2 -q "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id" -o joined.csv.gz
+```
+
+### Create Indexes
+
+Create indexes on columns for faster queries:
+
+```bash
+# Create index on a single column
+yatisql -i data.csv -d mydata.db -x user_id
+
+# Create indexes on multiple columns
+yatisql -i data.csv -d mydata.db -x user_id,email,created_at
+
+# With progress bars
+yatisql -i accidents.csv.gz -d accidents.db -t accidents -x State,City,Severity -p
+```
+
+Output:
+```
+  [→] Parsing & writing accidents.csv.gz → table 'accidents' (streaming)...
+  [→] Creating 3 index(es) on 'accidents'...
+  [✓] Created 3 index(es) on 'accidents' in 1.234s
+  [✓] Completed streaming accidents.csv.gz (500000 rows) in 3.5s
+✓ Successfully imported table 'accidents'
+```
+
+**Early validation**: If a column doesn't exist in the CSV, the import fails immediately with a clear error:
+```
+Error: index columns not found in file 'data.csv': nonexistent_column
 ```
 
 ### Debugging & Tracing
@@ -321,6 +352,7 @@ Typical performance on modern hardware:
 - **Multiple files**: Use comma-separated values for `-i`/`--input` and `-t`/`--table` flags
 - **Concurrent imports**: Multiple files are imported in parallel for faster processing
 - **WAL mode**: SQLite Write-Ahead Logging is enabled for concurrent write performance
+- **Indexing**: Create indexes with `-x` flag; columns are validated early before import starts
 - **Colored output**: Success messages are green, errors are red, info messages are cyan
 
 ## Getting Help

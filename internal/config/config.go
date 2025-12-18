@@ -8,14 +8,15 @@ import (
 
 // Config holds all configuration options for yatisql.
 type Config struct {
-	InputFiles []string
-	OutputFile string
-	SQLQuery   string
-	Delimiter  rune
-	DBPath     string
-	TableNames []string
-	HasHeader  bool
-	KeepDB     bool // Track if db should be kept (explicitly set)
+	InputFiles   []string
+	OutputFile   string
+	SQLQuery     string
+	Delimiter    rune
+	DBPath       string
+	TableNames   []string
+	IndexColumns []string // Columns to create indexes on
+	HasHeader    bool
+	KeepDB       bool // Track if db should be kept (explicitly set)
 }
 
 // ParseDelimiter converts a delimiter string to a rune.

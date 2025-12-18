@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"runtime/trace"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,10 +34,11 @@ type ParsedFile struct {
 
 // FileInput describes a file to be imported.
 type FileInput struct {
-	FilePath  string
-	TableName string
-	Delimiter rune
-	HasHeader bool
+	FilePath     string
+	TableName    string
+	Delimiter    rune
+	HasHeader    bool
+	IndexColumns []string // Columns to create indexes on (validated early)
 }
 
 // ParseFile reads and parses a CSV/TSV file into memory.
@@ -273,6 +275,24 @@ func importFileStreaming(db *sql.DB, input FileInput, progressCallback ProgressC
 		}
 	}
 
+	// Validate index columns exist in headers (fail early)
+	if len(input.IndexColumns) > 0 {
+		headerSet := make(map[string]bool)
+		for _, h := range headers {
+			headerSet[strings.ToLower(database.SanitizeColumnName(h))] = true
+		}
+		var missing []string
+		for _, col := range input.IndexColumns {
+			sanitized := database.SanitizeColumnName(col)
+			if !headerSet[strings.ToLower(sanitized)] {
+				missing = append(missing, col)
+			}
+		}
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("index columns not found in file '%s': %s", input.FilePath, strings.Join(missing, ", "))
+		}
+	}
+
 	// Create table first
 	if err := database.CreateTable(db, input.TableName, headers); err != nil {
 		return nil, fmt.Errorf("failed to create table: %w", err)
@@ -329,6 +349,26 @@ func importFileStreaming(db *sql.DB, input FileInput, progressCallback ProgressC
 
 		if writeProgressCallback != nil {
 			writeProgressCallback(input.FilePath, rowsWritten)
+		}
+	}
+
+	// Create indexes after all data is written
+	if len(input.IndexColumns) > 0 {
+		if progressCallback != nil {
+			progressCallback("index_start", input.FilePath, input.TableName, input.IndexColumns)
+		}
+		indexStart := time.Now()
+
+		if err := database.CreateIndexes(db, input.TableName, input.IndexColumns); err != nil {
+			if progressCallback != nil {
+				progressCallback("index_error", input.FilePath, input.TableName, err)
+			}
+			return nil, fmt.Errorf("failed to create indexes: %w", err)
+		}
+
+		indexDuration := time.Since(indexStart)
+		if progressCallback != nil {
+			progressCallback("index_complete", input.FilePath, input.TableName, len(input.IndexColumns), indexDuration)
 		}
 	}
 
