@@ -140,7 +140,7 @@ func TestImportConcurrent(t *testing.T) {
 		{FilePath: ordersPath, TableName: "orders", Delimiter: ',', HasHeader: true},
 	}
 
-	results, err := ImportConcurrent(db.DB, inputs, false, nil)
+	results, err := ImportConcurrent(db.DB, inputs, false, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("ImportConcurrent() error = %v", err)
 	}
@@ -192,7 +192,7 @@ func TestImportConcurrentPartialFailure(t *testing.T) {
 		{FilePath: nonExistentPath, TableName: "missing", Delimiter: ',', HasHeader: true},
 	}
 
-	results, err := ImportConcurrent(db.DB, inputs, false, nil)
+	results, err := ImportConcurrent(db.DB, inputs, false, nil, nil, nil)
 
 	// Should have one successful result
 	if len(results) != 1 {
@@ -221,7 +221,7 @@ func TestImportConcurrentEmpty(t *testing.T) {
 	}
 	defer db.Close()
 
-	results, err := ImportConcurrent(db.DB, []FileInput{}, false, nil)
+	results, err := ImportConcurrent(db.DB, []FileInput{}, false, nil, nil, nil)
 	if err != nil {
 		t.Errorf("ImportConcurrent() with empty input error = %v", err)
 	}
@@ -239,7 +239,7 @@ func TestParseFile(t *testing.T) {
 		TableName: "test",
 		Delimiter: ',',
 		HasHeader: true,
-	})
+	}, nil)
 
 	if parsed.Error != nil {
 		t.Fatalf("ParseFile() error = %v", parsed.Error)
@@ -264,7 +264,7 @@ func TestParseFileError(t *testing.T) {
 		TableName: "test",
 		Delimiter: ',',
 		HasHeader: true,
-	})
+	}, nil)
 
 	if parsed.Error == nil {
 		t.Error("Expected error for nonexistent file, got nil")

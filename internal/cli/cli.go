@@ -217,7 +217,7 @@ func run(cfg *config.Config, traceDebug bool, showProgress bool) error {
 			switch event {
 			case "parse_start":
 				if !showProgress || !isTerminal() {
-					infoColor.Printf("  [→] Parsing %s → table '%s'...\n", filePath, tableName)
+					infoColor.Printf("  [→] Parsing & writing %s → table '%s' (streaming)...\n", filePath, tableName)
 				} else {
 					tracker.StartParse(filePath, tableName)
 				}
@@ -225,7 +225,7 @@ func run(cfg *config.Config, traceDebug bool, showProgress bool) error {
 				rowCount := details[0].(int)
 				duration := details[1].(time.Duration)
 				if !showProgress || !isTerminal() {
-					infoColor.Printf("  [✓] Parsed %s (%d rows) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
+					infoColor.Printf("  [✓] Completed streaming %s (%d rows parsed & written) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
 				} else {
 					tracker.FinishParse(filePath, int64(rowCount), duration)
 				}
@@ -281,6 +281,10 @@ func run(cfg *config.Config, traceDebug bool, showProgress bool) error {
 		}
 
 		results, err := importer.ImportConcurrent(db.DB, inputs, traceDebug, progressCallback, parseProgressCallback, writeProgressCallback)
+
+		// Stop progress tracker render loop
+		tracker.Stop()
+
 		if err != nil {
 			warnColor.Fprintf(os.Stderr, "Warning: some imports failed:\n%v\n", err)
 		}
