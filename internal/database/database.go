@@ -58,6 +58,16 @@ func Open(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Enable WAL mode for better concurrent write performance
+	// This allows concurrent writes to different tables
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		if shouldCleanup {
+			os.Remove(path)
+		}
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
 	return &DB{
 		DB:            db,
 		Path:          path,

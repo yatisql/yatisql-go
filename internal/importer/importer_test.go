@@ -124,6 +124,153 @@ func TestImportWithoutHeader(t *testing.T) {
 	}
 }
 
+func TestImportConcurrent(t *testing.T) {
+	testdataPath := findTestdata(t)
+	usersPath := filepath.Join(testdataPath, "multi_file", "users.csv")
+	ordersPath := filepath.Join(testdataPath, "multi_file", "orders.csv")
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	inputs := []FileInput{
+		{FilePath: usersPath, TableName: "users", Delimiter: ',', HasHeader: true},
+		{FilePath: ordersPath, TableName: "orders", Delimiter: ',', HasHeader: true},
+	}
+
+	results, err := ImportConcurrent(db.DB, inputs, false, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("ImportConcurrent() error = %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 results, got %d", len(results))
+	}
+
+	// Verify both tables exist and have correct row counts
+	var usersCount, ordersCount int
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&usersCount); err != nil {
+		t.Fatalf("Query users count error = %v", err)
+	}
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM orders").Scan(&ordersCount); err != nil {
+		t.Fatalf("Query orders count error = %v", err)
+	}
+
+	if usersCount != 5 {
+		t.Errorf("users table has %d rows, want 5", usersCount)
+	}
+	if ordersCount != 8 {
+		t.Errorf("orders table has %d rows, want 8", ordersCount)
+	}
+
+	// Verify we can JOIN the tables
+	var joinCount int
+	joinQuery := "SELECT COUNT(*) FROM users u JOIN orders o ON u.id = o.user_id"
+	if err := db.DB.QueryRow(joinQuery).Scan(&joinCount); err != nil {
+		t.Fatalf("JOIN query error = %v", err)
+	}
+	if joinCount != 8 {
+		t.Errorf("JOIN returned %d rows, want 8", joinCount)
+	}
+}
+
+func TestImportConcurrentPartialFailure(t *testing.T) {
+	testdataPath := findTestdata(t)
+	usersPath := filepath.Join(testdataPath, "multi_file", "users.csv")
+	nonExistentPath := filepath.Join(testdataPath, "nonexistent.csv")
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	inputs := []FileInput{
+		{FilePath: usersPath, TableName: "users", Delimiter: ',', HasHeader: true},
+		{FilePath: nonExistentPath, TableName: "missing", Delimiter: ',', HasHeader: true},
+	}
+
+	results, err := ImportConcurrent(db.DB, inputs, false, nil, nil, nil)
+
+	// Should have one successful result
+	if len(results) != 1 {
+		t.Errorf("Expected 1 successful result, got %d", len(results))
+	}
+
+	// Should have an error for the missing file
+	if err == nil {
+		t.Error("Expected error for missing file, got nil")
+	}
+
+	// The successful import should still work
+	var usersCount int
+	if err := db.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&usersCount); err != nil {
+		t.Fatalf("Query users count error = %v", err)
+	}
+	if usersCount != 5 {
+		t.Errorf("users table has %d rows, want 5", usersCount)
+	}
+}
+
+func TestImportConcurrentEmpty(t *testing.T) {
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	results, err := ImportConcurrent(db.DB, []FileInput{}, false, nil, nil, nil)
+	if err != nil {
+		t.Errorf("ImportConcurrent() with empty input error = %v", err)
+	}
+	if results != nil {
+		t.Errorf("Expected nil results for empty input, got %v", results)
+	}
+}
+
+func TestParseFile(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	parsed := ParseFile(FileInput{
+		FilePath:  csvPath,
+		TableName: "test",
+		Delimiter: ',',
+		HasHeader: true,
+	}, nil)
+
+	if parsed.Error != nil {
+		t.Fatalf("ParseFile() error = %v", parsed.Error)
+	}
+
+	if parsed.TableName != "test" {
+		t.Errorf("TableName = %q, want %q", parsed.TableName, "test")
+	}
+
+	if len(parsed.Headers) == 0 {
+		t.Error("Expected headers to be populated")
+	}
+
+	if len(parsed.Rows) != 10 {
+		t.Errorf("Expected 10 rows, got %d", len(parsed.Rows))
+	}
+}
+
+func TestParseFileError(t *testing.T) {
+	parsed := ParseFile(FileInput{
+		FilePath:  "/nonexistent/file.csv",
+		TableName: "test",
+		Delimiter: ',',
+		HasHeader: true,
+	}, nil)
+
+	if parsed.Error == nil {
+		t.Error("Expected error for nonexistent file, got nil")
+	}
+}
+
 // findTestdata locates the testdata directory relative to the test file.
 func findTestdata(t *testing.T) string {
 	// Try different relative paths
