@@ -151,6 +151,16 @@ func run(config *Config) error {
 		}()
 	}
 
+	// Create directory for database file if it doesn't exist (for paths like db/test.db)
+	if !shouldCleanup && config.DBPath != "" {
+		dbDir := filepath.Dir(config.DBPath)
+		if dbDir != "." && dbDir != "" {
+			if err := os.MkdirAll(dbDir, 0755); err != nil {
+				return fmt.Errorf("failed to create database directory %s: %w", dbDir, err)
+			}
+		}
+	}
+
 	// Open database
 	db, err := sql.Open("sqlite3", config.DBPath)
 	if err != nil {
