@@ -1,0 +1,78 @@
+# GoReleaser configuration for Linux builds
+# See: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: yatisql
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: yatisql-linux-amd64
+    main: ./cmd/yatisql
+    binary: yatisql
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.buildTime={{.Date}}
+
+  - id: yatisql-linux-arm64
+    main: ./cmd/yatisql
+    binary: yatisql
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+    goos:
+      - linux
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.buildTime={{.Date}}
+
+archives:
+  - id: linux
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_ {{- .Version }}_ {{- .Os }}_ {{- .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: yatisql
+    name: yatisql-go
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+  replace_existing_artifacts: true

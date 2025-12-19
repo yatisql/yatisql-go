@@ -1,0 +1,58 @@
+# GoReleaser configuration for macOS builds
+# See: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: yatisql
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: yatisql-macos
+    main: ./cmd/yatisql
+    binary: yatisql
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.buildTime={{.Date}}
+
+archives:
+  - id: macos
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_ {{- .Version }}_ {{- .Os }}_ {{- .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums_macos.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: yatisql
+    name: yatisql-go
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
+  replace_existing_artifacts: true
+  # Append to existing release created by Linux job
+  mode: append
