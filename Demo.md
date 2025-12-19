@@ -34,7 +34,7 @@ We could also nest queries:
 
 Kaggle, US Accidents (2016 - 2023) - https://www.kaggle.com/datasets/sobhanmoosavi/us-accidents.
 
-7.7 million rows!
+7.7 million rows, 677 Mb gzip compressed file:
 
 ```csv
 ID,Source,Severity,Start_Time,End_Time,Start_Lat,Start_Lng,End_Lat,End_Lng,Distance(mi),Description,Street,City,County,State,Zipcode,Country,Timezone,Airport_Code,Weather_Timestamp,Temperature(F),Wind_Chill(F),Humidity(%),Pressure(in),Visibility(mi),Wind_Direction,Wind_Speed(mph),Precipitation(in),Weather_Condition,Amenity,Bump,Crossing,Give_Way,Junction,No_Exit,Railway,Roundabout,Station,Stop,Traffic_Calming,Traffic_Signal,Turning_Loop,Sunrise_Sunset,Civil_Twilight,Nautical_Twilight,Astronomical_Twilight
