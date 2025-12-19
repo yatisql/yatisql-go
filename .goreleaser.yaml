@@ -11,65 +11,47 @@ before:
     - go generate ./...
 
 builds:
-  - id: yatisql
+  - id: yatisql-linux-amd64
     main: ./cmd/yatisql
     binary: yatisql
     env:
       - CGO_ENABLED=1
     goos:
       - linux
-      - darwin
     goarch:
       - amd64
-      - arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
       - -X main.buildTime={{.Date}}
-    # Cross-compilation for CGO requires special setup
-    # For now, we build native only in CI
-    ignore:
-      - goos: darwin
-        goarch: amd64
-      - goos: darwin
-        goarch: arm64
 
-  # Native macOS build (run on macOS runner)
-  - id: yatisql-macos
+  - id: yatisql-linux-arm64
     main: ./cmd/yatisql
     binary: yatisql
     env:
       - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
     goos:
-      - darwin
+      - linux
     goarch:
-      - amd64
       - arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
       - -X main.buildTime={{.Date}}
-    hooks:
-      post:
-        - upx --best --lzma {{ .Path }} || true
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
-    format_overrides:
-      - goos: windows
-        format: zip
+      {{ .ProjectName }}_ {{- .Version }}_ {{- .Os }}_ {{- .Arch }}
     files:
       - LICENSE
       - README.md
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
   algorithm: sha256
 
 snapshot:
@@ -79,10 +61,10 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
-      - '^chore:'
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
       - Merge pull request
       - Merge branch
 
@@ -93,14 +75,12 @@ release:
   draft: false
   prerelease: auto
   name_template: "v{{ .Version }}"
-
 # Homebrew formula (optional, uncomment if you have a tap)
 # brews:
 #   - repository:
-#       owner: george-nikitin
+#       owner: yatisql
 #       name: homebrew-tap
 #     folder: Formula
-#     homepage: https://github.com/george-nikitin/yatisql-go
+#     homepage: https://github.com/yatisql/yatisql-go
 #     description: "Query CSV/TSV files using SQL"
 #     license: MIT
-
