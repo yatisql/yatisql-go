@@ -47,6 +47,8 @@ Python with pandas is the go-to for data wrangling, but it has trade-offs:
 | Dependency hell (`numpy`, `pandas` version conflicts) | No runtime dependencies to break                    |
 | Awkward in shell pipelines and cron jobs              | Native CLI, pipes, and exit codes work as expected  |
 
+*"But I can bundle Python into a binary with PyInstaller/Nuitka!"* — True, but you'd still need to write the script first, the resulting binary would be 50-200MB (bundled interpreter + numpy + pandas), and pandas would still load your CSV into RAM. yatisql is ~15MB and streams by design.
+
 **When to use pandas instead:** If you need complex transformations, ML preprocessing, or visualization—pandas is the right tool. yatisql is for when you just need to **query** CSVs fast without ceremony.
 
 ## Features
