@@ -31,16 +31,13 @@ archives:
     formats:
       - tar.gz
     name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
+      {{ .ProjectName }}_ {{- .Version }}_ {{- .Os }}_ {{- .Arch }}
     files:
       - LICENSE
       - README.md
 
 checksum:
-  name_template: 'checksums_macos.txt'
+  name_template: "checksums_macos.txt"
   algorithm: sha256
 
 snapshot:
@@ -56,6 +53,6 @@ release:
   draft: false
   prerelease: auto
   name_template: "v{{ .Version }}"
+  replace_existing_artifacts: true
   # Append to existing release created by Linux job
   mode: append
-

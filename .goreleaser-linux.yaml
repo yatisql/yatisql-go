@@ -45,16 +45,13 @@ archives:
     formats:
       - tar.gz
     name_template: >-
-      {{ .ProjectName }}_
-      {{- .Version }}_
-      {{- .Os }}_
-      {{- .Arch }}
+      {{ .ProjectName }}_ {{- .Version }}_ {{- .Os }}_ {{- .Arch }}
     files:
       - LICENSE
       - README.md
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
   algorithm: sha256
 
 snapshot:
@@ -64,10 +61,10 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
-      - '^chore:'
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
       - Merge pull request
       - Merge branch
 
@@ -78,4 +75,4 @@ release:
   draft: false
   prerelease: auto
   name_template: "v{{ .Version }}"
-
+  replace_existing_artifacts: true
