@@ -60,6 +60,7 @@ Python with pandas is the go-to for data wrangling, but it has trade-offs:
 - 🗜️ **Compression support** - Handles gzip-compressed files (.gz) automatically
 - 🔗 **JOIN support** - Import multiple files and join them in SQL queries
 - 🔑 **Index creation** - Create indexes on columns with `-x` flag for faster queries
+- 🔄 **Multiple queries** - Execute multiple queries concurrently with multiple outputs
 - 📈 **Progress bars** - Real-time progress with `-p` flag
 - 🎨 **Colored output** for better readability
 - ⚡ **WAL mode** - Concurrent writes to different tables
@@ -180,21 +181,47 @@ cat data.tsv | yatisql --delimiter tab -q "SELECT * FROM data LIMIT 10"
 - Stdin cannot be compressed (no `.gz` support for stdin)
 - Output to stdout is CSV format by default
 
+### Multiple Queries with Concurrent Execution
+
+yatisql supports executing multiple queries in a single run, with concurrent execution for better performance:
+
+```bash
+# Multiple queries with multiple outputs (executed concurrently)
+yatisql -i data.csv -q "SELECT * FROM data LIMIT 10" -q "SELECT COUNT(*) FROM data" -o "first10.csv,count.csv"
+
+# Multiple queries, all to stdout (executed sequentially to avoid interleaved output)
+yatisql -i data.csv -q "SELECT * FROM data LIMIT 5" -q "SELECT COUNT(*) FROM data"
+
+# Run multiple analyses in parallel
+yatisql -i sales.csv -q "SELECT category, SUM(amount) FROM data GROUP BY category" \
+        -q "SELECT AVG(amount) FROM data" \
+        -q "SELECT MAX(amount) FROM data" \
+        -o "by_category.csv,average.csv,maximum.csv"
+```
+
+**Notes:**
+- Use multiple `-q` flags to specify multiple queries
+- Use comma-separated values in `-o` flag for multiple outputs (must match number of queries)
+- Queries writing to files execute **concurrently** for better performance
+- Queries writing to stdout execute **sequentially** to avoid interleaved output
+- Multiple queries are **not supported with stdin** (stdin can only be read once)
+- If number of outputs doesn't match number of queries, an error is returned
+
 ## Command Line Options
 
-| Flag            | Short | Description                                                                                                          |
-| --------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
-| `--input`       | `-i`  | Input CSV/TSV file path(s), comma-separated for multiple files (supports .gz compression). Use `-` or omit for stdin |
-| `--output`      | `-o`  | Output CSV/TSV file path (default: stdout, supports .gz compression). Use `-` for explicit stdout                    |
-| `--query`       | `-q`  | SQL query to execute                                                                                                 |
-| `--db`          | `-d`  | SQLite database path (default: temporary file, auto-deleted after execution)                                         |
-| `--table`       | `-t`  | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.)                                    |
-| `--index`       | `-x`  | Column(s) to create indexes on, comma-separated (validates columns exist early)                                      |
-| `--header`      | `-H`  | Input file has header row (default: `true`)                                                                          |
-| `--delimiter`   |       | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`)                                                         |
-| `--progress`    | `-p`  | Show progress bars for file import operations                                                                        |
-| `--trace`       |       | Write execution trace to file (use `go tool trace <file>` to view)                                                   |
-| `--trace-debug` |       | Enable debug logging for concurrent execution                                                                        |
+| Flag            | Short | Description                                                                                                                                 |
+| --------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--input`       | `-i`  | Input CSV/TSV file path(s), comma-separated for multiple files (supports .gz compression). Use `-` or omit for stdin                        |
+| `--output`      | `-o`  | Output CSV/TSV file path(s), comma-separated for multiple outputs (default: stdout, supports .gz compression). Must match number of queries |
+| `--query`       | `-q`  | SQL query(ies) to execute (can specify multiple `-q` flags for multiple queries, executed concurrently)                                     |
+| `--db`          | `-d`  | SQLite database path (default: temporary file, auto-deleted after execution)                                                                |
+| `--table`       | `-t`  | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.)                                                           |
+| `--index`       | `-x`  | Column(s) to create indexes on, comma-separated (validates columns exist early)                                                             |
+| `--header`      | `-H`  | Input file has header row (default: `true`)                                                                                                 |
+| `--delimiter`   |       | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`)                                                                                |
+| `--progress`    | `-p`  | Show progress bars for file import operations                                                                                               |
+| `--trace`       |       | Write execution trace to file (use `go tool trace <file>` to view)                                                                          |
+| `--trace-debug` |       | Enable debug logging for concurrent execution                                                                                               |
 
 ### Database Behavior
 
