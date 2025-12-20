@@ -53,7 +53,7 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid with query",
 			config: Config{
-				SQLQuery: "SELECT * FROM data",
+				SQLQueries: []string{"SELECT * FROM data"},
 			},
 			wantErr: false,
 		},
@@ -61,7 +61,7 @@ func TestConfigValidate(t *testing.T) {
 			name: "valid with both",
 			config: Config{
 				InputFiles: []string{"data.csv"},
-				SQLQuery:   "SELECT * FROM data",
+				SQLQueries: []string{"SELECT * FROM data"},
 			},
 			wantErr: false,
 		},

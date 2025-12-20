@@ -9,8 +9,8 @@ import (
 // Config holds all configuration options for yatisql.
 type Config struct {
 	InputFiles   []string
-	OutputFile   string
-	SQLQuery     string
+	OutputFiles  []string // Multiple output files, one per query
+	SQLQueries   []string // Multiple SQL queries
 	Delimiter    rune
 	DBPath       string
 	TableNames   []string
@@ -37,8 +37,29 @@ func ParseDelimiter(delimiterStr string) (rune, error) {
 
 // Validate checks if the configuration is valid.
 func (c *Config) Validate() error {
-	if len(c.InputFiles) == 0 && c.SQLQuery == "" {
+	// Check if we have at least one input file or query
+	if len(c.InputFiles) == 0 && len(c.SQLQueries) == 0 {
 		return fmt.Errorf("must specify at least one input file or a query")
 	}
+
+	// Check if stdin is used with multiple queries
+	hasStdin := false
+	for _, inputFile := range c.InputFiles {
+		if inputFile == "-" || inputFile == "" {
+			hasStdin = true
+			break
+		}
+	}
+	if hasStdin && len(c.SQLQueries) > 1 {
+		return fmt.Errorf("multiple queries not supported with stdin input (stdin can only be read once)")
+	}
+
+	// If outputs are provided, they must match query count
+	if len(c.OutputFiles) > 0 && len(c.SQLQueries) > 0 {
+		if len(c.OutputFiles) != len(c.SQLQueries) {
+			return fmt.Errorf("number of output files (%d) must match number of queries (%d)", len(c.OutputFiles), len(c.SQLQueries))
+		}
+	}
+
 	return nil
 }
