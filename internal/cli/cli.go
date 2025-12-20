@@ -247,22 +247,24 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 			switch event {
 			case "parse_start":
 				// Skip progress output for stdin
-				if filePath == "-" || filePath == "" {
+				switch {
+				case filePath == "-" || filePath == "":
 					// Silent for stdin
-				} else if !showProgress || !isTerminal() {
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [→] Parsing & writing %s → table '%s' (streaming)...\n", filePath, tableName)
-				} else {
+				default:
 					tracker.StartParse(filePath, tableName)
 				}
 			case "parse_complete":
 				rowCount := details[0].(int)
 				duration := details[1].(time.Duration)
 				// Skip progress output for stdin
-				if filePath == "-" || filePath == "" {
+				switch {
+				case filePath == "-" || filePath == "":
 					// Silent for stdin
-				} else if !showProgress || !isTerminal() {
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [✓] Completed streaming %s (%d rows parsed & written) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
-				} else {
+				default:
 					tracker.FinishParse(filePath, int64(rowCount), duration)
 				}
 			case "parse_error":
@@ -283,22 +285,24 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 					}
 				}
 				// Skip progress output for stdin
-				if filePath == "-" || filePath == "" {
+				switch {
+				case filePath == "-" || filePath == "":
 					// Silent for stdin
-				} else if !showProgress || !isTerminal() {
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [→] Writing %s to database...\n", filePath)
-				} else {
+				default:
 					tracker.StartWrite(filePath, tableName, rowCount)
 				}
 			case "write_complete":
 				rowCount := details[0].(int)
 				// Skip progress output for stdin
-				if filePath == "-" || filePath == "" {
+				switch {
+				case filePath == "-" || filePath == "":
 					// Silent for stdin
-				} else if !showProgress || !isTerminal() {
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [✓] Imported %d rows into '%s'\n", rowCount, tableName)
 					successColor.Printf("✓ Successfully imported table '%s'\n", tableName)
-				} else {
+				default:
 					tracker.FinishWrite(filePath, tableName, int64(rowCount))
 				}
 			case "write_error":
