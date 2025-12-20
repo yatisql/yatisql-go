@@ -64,6 +64,7 @@ Python with pandas is the go-to for data wrangling, but it has trade-offs:
 - 🎨 **Colored output** for better readability
 - ⚡ **WAL mode** - Concurrent writes to different tables
 - 📁 **Automatic directory creation** for database paths
+- 🔄 **Stdin/stdout support** - Read from stdin and write to stdout for pipeline usage
 
 ## Installation
 
@@ -149,21 +150,51 @@ yatisql -d mydata.db -q "SELECT COUNT(*) FROM mytable" -o count.csv
 yatisql -i data.tsv --delimiter tab -q "SELECT * FROM data WHERE age > 30" -o filtered.tsv
 ```
 
+### Stdin and Stdout (Pipeline Support)
+
+yatisql supports reading from stdin and writing to stdout, making it perfect for shell pipelines:
+
+```bash
+# Read from stdin (omit -i flag or use '-')
+cat data.csv | yatisql -q "SELECT * FROM data LIMIT 10"
+
+# Explicit stdin indicator
+cat data.csv | yatisql -i - -q "SELECT * FROM data LIMIT 10"
+
+# Write to stdout (omit -o flag)
+yatisql -i data.csv -q "SELECT * FROM data LIMIT 10"
+
+# Full pipeline: stdin → query → stdout
+cat data.csv | yatisql -q "SELECT name, age FROM data WHERE CAST(age AS INTEGER) > 30" | head -5
+
+# Chain with other tools
+cat data.csv | yatisql -q "SELECT * FROM data" | grep "pattern" | sort
+
+# With explicit delimiter for stdin
+cat data.tsv | yatisql --delimiter tab -q "SELECT * FROM data LIMIT 10"
+```
+
+**Notes:**
+- When reading from stdin, delimiter defaults to comma (`,`) if `--delimiter auto` is used
+- Progress bars are automatically disabled when reading from stdin
+- Stdin cannot be compressed (no `.gz` support for stdin)
+- Output to stdout is CSV format by default
+
 ## Command Line Options
 
-| Flag            | Short | Description                                                                               |
-| --------------- | ----- | ----------------------------------------------------------------------------------------- |
-| `--input`       | `-i`  | Input CSV/TSV file path(s), comma-separated for multiple files (supports .gz compression) |
-| `--output`      | `-o`  | Output CSV/TSV file path (default: stdout, supports .gz compression)                      |
-| `--query`       | `-q`  | SQL query to execute                                                                      |
-| `--db`          | `-d`  | SQLite database path (default: temporary file, auto-deleted after execution)              |
-| `--table`       | `-t`  | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.)         |
-| `--index`       | `-x`  | Column(s) to create indexes on, comma-separated (validates columns exist early)           |
-| `--header`      | `-H`  | Input file has header row (default: `true`)                                               |
-| `--delimiter`   |       | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`)                              |
-| `--progress`    | `-p`  | Show progress bars for file import operations                                             |
-| `--trace`       |       | Write execution trace to file (use `go tool trace <file>` to view)                        |
-| `--trace-debug` |       | Enable debug logging for concurrent execution                                             |
+| Flag            | Short | Description                                                                                                          |
+| --------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
+| `--input`       | `-i`  | Input CSV/TSV file path(s), comma-separated for multiple files (supports .gz compression). Use `-` or omit for stdin |
+| `--output`      | `-o`  | Output CSV/TSV file path (default: stdout, supports .gz compression). Use `-` for explicit stdout                    |
+| `--query`       | `-q`  | SQL query to execute                                                                                                 |
+| `--db`          | `-d`  | SQLite database path (default: temporary file, auto-deleted after execution)                                         |
+| `--table`       | `-t`  | Table name(s) for imported data, comma-separated (default: `data`, `data2`, etc.)                                    |
+| `--index`       | `-x`  | Column(s) to create indexes on, comma-separated (validates columns exist early)                                      |
+| `--header`      | `-H`  | Input file has header row (default: `true`)                                                                          |
+| `--delimiter`   |       | Field delimiter: `comma`, `tab`, or `auto` (default: `auto`)                                                         |
+| `--progress`    | `-p`  | Show progress bars for file import operations                                                                        |
+| `--trace`       |       | Write execution trace to file (use `go tool trace <file>` to view)                                                   |
+| `--trace-debug` |       | Enable debug logging for concurrent execution                                                                        |
 
 ### Database Behavior
 
