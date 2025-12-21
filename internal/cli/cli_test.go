@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -189,4 +191,215 @@ func findTestdata(t *testing.T) string {
 
 	t.Skip("testdata directory not found")
 	return ""
+}
+
+func TestStdinInput(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	// Read the CSV file content
+	csvContent, err := os.ReadFile(csvPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	// Create a temporary file to capture stdout
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "output.csv")
+
+	// Test with explicit stdin indicator "-"
+	cfg := &config.Config{
+		InputFiles: []string{"-"},
+		SQLQuery:   "SELECT name, age FROM data WHERE CAST(age AS INTEGER) > 30 ORDER BY CAST(age AS INTEGER)",
+		OutputFile: outputPath,
+		HasHeader:  true,
+		Delimiter:  ',',
+	}
+
+	// Save original stdin and restore it
+	oldStdin := os.Stdin
+	defer func() { os.Stdin = oldStdin }()
+
+	// Create a pipe to simulate stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Pipe() error = %v", err)
+	}
+	os.Stdin = r
+
+	// Write CSV content to stdin in a goroutine
+	go func() {
+		defer w.Close()
+		_, _ = w.Write(csvContent)
+	}()
+
+	if err := run(cfg, false, false); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+
+	// Close the read end
+	r.Close()
+
+	// Verify output
+	content, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	// Should have header + rows for age > 30
+	if len(lines) < 2 {
+		t.Errorf("Expected at least 2 lines (header + data), got %d", len(lines))
+	}
+
+	// Verify header
+	if lines[0] != "name,age" {
+		t.Errorf("Expected header 'name,age', got %q", lines[0])
+	}
+}
+
+func TestStdoutOutput(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	// Save original stdout
+	oldStdout := os.Stdout
+	defer func() { os.Stdout = oldStdout }()
+
+	// Create a pipe to capture stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Pipe() error = %v", err)
+	}
+	os.Stdout = w
+
+	cfg := &config.Config{
+		InputFiles: []string{csvPath},
+		SQLQuery:   "SELECT COUNT(*) as total FROM data",
+		OutputFile: "", // Empty means stdout
+		HasHeader:  true,
+		Delimiter:  ',',
+	}
+
+	// Read from stdout in a goroutine
+	var buf bytes.Buffer
+	readDone := make(chan error)
+	go func() {
+		defer r.Close()
+		_, err := io.Copy(&buf, r)
+		readDone <- err
+	}()
+
+	// Run in a goroutine
+	runDone := make(chan error)
+	go func() {
+		err := run(cfg, false, false)
+		// Close write end to signal EOF to reader
+		w.Close()
+		runDone <- err
+	}()
+
+	// Wait for both to complete
+	if err := <-runDone; err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if err := <-readDone; err != nil && err != io.EOF {
+		t.Fatalf("Read error = %v", err)
+	}
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("Expected at least 2 lines (header + count), got %d. Output: %q", len(lines), output)
+	}
+	if lines[1] != "10" {
+		t.Errorf("Expected count '10', got %q", lines[1])
+	}
+}
+
+func TestStdinToStdoutPipeline(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	// Read the CSV file content
+	csvContent, err := os.ReadFile(csvPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	// Save original stdin/stdout
+	oldStdin := os.Stdin
+	oldStdout := os.Stdout
+	defer func() {
+		os.Stdin = oldStdin
+		os.Stdout = oldStdout
+	}()
+
+	// Create pipes for stdin and stdout
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Stdin Pipe() error = %v", err)
+	}
+	os.Stdin = stdinR
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Stdout Pipe() error = %v", err)
+	}
+	os.Stdout = stdoutW
+
+	cfg := &config.Config{
+		InputFiles: []string{"-"}, // Explicit stdin
+		SQLQuery:   "SELECT name FROM data WHERE name LIKE 'A%'",
+		OutputFile: "", // Stdout
+		HasHeader:  true,
+		Delimiter:  ',',
+	}
+
+	// Write CSV content to stdin in a goroutine
+	go func() {
+		defer stdinW.Close()
+		_, _ = stdinW.Write(csvContent)
+	}()
+
+	// Read from stdout in a goroutine
+	var buf bytes.Buffer
+	readDone := make(chan error)
+	go func() {
+		defer stdoutR.Close()
+		_, err := io.Copy(&buf, stdoutR)
+		readDone <- err
+	}()
+
+	// Run in a goroutine
+	runDone := make(chan error)
+	go func() {
+		err := run(cfg, false, false)
+		// Close write end to signal EOF to reader
+		stdoutW.Close()
+		runDone <- err
+	}()
+
+	// Wait for both to complete
+	if err := <-runDone; err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if err := <-readDone; err != nil && err != io.EOF {
+		t.Fatalf("Read error = %v", err)
+	}
+
+	stdinR.Close()
+
+	output := buf.String()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	// Should have header + 1 row (Alice)
+	if len(lines) < 2 {
+		t.Fatalf("Expected at least 2 lines (header + Alice), got %d. Output: %q", len(lines), output)
+	}
+	if lines[0] != "name" {
+		t.Errorf("Expected header 'name', got %q", lines[0])
+	}
+	if len(lines) >= 2 && lines[1] != "Alice" {
+		t.Errorf("Expected 'Alice', got %q", lines[1])
+	}
 }

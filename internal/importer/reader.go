@@ -13,7 +13,13 @@ import (
 
 // OpenFile opens a file, handling compression automatically based on extension.
 // Supports .gz (gzip) and .bz2 (bzip2) compressed files.
+// If filePath is "-" or empty string, returns os.Stdin wrapped in a no-op closer.
 func OpenFile(filePath string) (io.ReadCloser, error) {
+	// Handle stdin
+	if filePath == "-" || filePath == "" {
+		return &stdinReader{reader: os.Stdin}, nil
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -33,6 +39,20 @@ func OpenFile(filePath string) (io.ReadCloser, error) {
 	default:
 		return file, nil
 	}
+}
+
+// stdinReader wraps os.Stdin with a no-op Close method.
+type stdinReader struct {
+	reader io.Reader
+}
+
+func (s *stdinReader) Read(p []byte) (int, error) {
+	return s.reader.Read(p)
+}
+
+func (s *stdinReader) Close() error {
+	// Stdin should not be closed
+	return nil
 }
 
 // gzipFile wraps gzip reader and file to close both.
@@ -66,7 +86,13 @@ func (b *bzip2File) Close() error {
 
 // DetectDelimiter detects the delimiter based on file extension.
 // Returns ',' for CSV files and '\t' for TSV files.
+// For stdin (filePath is "-" or empty), defaults to comma.
 func DetectDelimiter(filePath string) rune {
+	// Handle stdin - default to comma since we can't detect from filename
+	if filePath == "-" || filePath == "" {
+		return ','
+	}
+
 	// Strip compression extensions first
 	path := filePath
 	for {

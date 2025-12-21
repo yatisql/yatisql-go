@@ -71,12 +71,18 @@ var rootCmd = &cobra.Command{
   yatisql -i users.csv,orders.csv -t users,orders -q "SELECT * FROM users u JOIN orders o ON u.id = o.user_id" -o joined.csv
 
   # Query compressed file
-  yatisql -i data.csv.gz -q "SELECT COUNT(*) FROM data"`,
+  yatisql -i data.csv.gz -q "SELECT COUNT(*) FROM data"
+
+  # Read from stdin and write to stdout (pipeline-friendly)
+  cat data.csv | yatisql -q "SELECT * FROM data LIMIT 10"
+
+  # Explicit stdin with explicit stdout
+  yatisql -i - -q "SELECT * FROM data" -o -`,
 	RunE: runCommand,
 }
 
 func init() {
-	rootCmd.Flags().StringSliceP("input", "i", []string{}, "Input CSV/TSV file(s), comma-separated for multiple files")
+	rootCmd.Flags().StringSliceP("input", "i", []string{}, "Input CSV/TSV file(s), comma-separated for multiple files (use '-' or omit for stdin)")
 	rootCmd.Flags().StringSliceP("table", "t", []string{}, "Table name(s) for imported data, comma-separated (default: 'data', 'data2', etc.)")
 	rootCmd.Flags().StringP("output", "o", "", "Output CSV/TSV file path (default: stdout)")
 	rootCmd.Flags().StringP("query", "q", "", "SQL query to execute")
@@ -110,6 +116,11 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	showProgress, _ := cmd.Flags().GetBool("progress")
 	indexColumns, _ := cmd.Flags().GetStringSlice("index")
 
+	// Handle stdin: if -i is omitted but -q is provided, treat as stdin input
+	if len(inputFiles) == 0 && query != "" {
+		inputFiles = []string{"-"}
+	}
+
 	cfg.InputFiles = inputFiles
 	cfg.TableNames = tableNames
 	cfg.OutputFile = outputFile
@@ -125,6 +136,11 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	cfg.Delimiter = delimiter
+
+	// If stdin is used and delimiter is auto, default to comma
+	if len(inputFiles) > 0 && (inputFiles[0] == "-" || inputFiles[0] == "") && delimiter == 0 {
+		cfg.Delimiter = ','
+	}
 
 	// Validate inputs
 	if err := cfg.Validate(); err != nil {
@@ -179,6 +195,15 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 
 	// Import CSV/TSV files into SQLite (concurrently)
 	if len(cfg.InputFiles) > 0 {
+		// Check if any input is stdin
+		hasStdin := false
+		for _, inputFile := range cfg.InputFiles {
+			if inputFile == "-" || inputFile == "" {
+				hasStdin = true
+				break
+			}
+		}
+
 		// Build file inputs for concurrent import
 		inputs := make([]importer.FileInput, len(cfg.InputFiles))
 		for i, inputFile := range cfg.InputFiles {
@@ -206,8 +231,9 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 		}
 
 		// Import all files concurrently with progress reporting
+		// Disable progress bars for stdin (no file path to track)
 		var tracker *ProgressTracker
-		if showProgress && isTerminal() {
+		if showProgress && isTerminal() && !hasStdin {
 			tracker = NewProgressTracker(true)
 		} else {
 			tracker = NewProgressTracker(false)
@@ -220,17 +246,25 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 
 			switch event {
 			case "parse_start":
-				if !showProgress || !isTerminal() {
+				// Skip progress output for stdin
+				switch {
+				case filePath == "-" || filePath == "":
+					// Silent for stdin
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [→] Parsing & writing %s → table '%s' (streaming)...\n", filePath, tableName)
-				} else {
+				default:
 					tracker.StartParse(filePath, tableName)
 				}
 			case "parse_complete":
 				rowCount := details[0].(int)
 				duration := details[1].(time.Duration)
-				if !showProgress || !isTerminal() {
+				// Skip progress output for stdin
+				switch {
+				case filePath == "-" || filePath == "":
+					// Silent for stdin
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [✓] Completed streaming %s (%d rows parsed & written) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
-				} else {
+				default:
 					tracker.FinishParse(filePath, int64(rowCount), duration)
 				}
 			case "parse_error":
@@ -250,17 +284,25 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 						rowCount = rc
 					}
 				}
-				if !showProgress || !isTerminal() {
+				// Skip progress output for stdin
+				switch {
+				case filePath == "-" || filePath == "":
+					// Silent for stdin
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [→] Writing %s to database...\n", filePath)
-				} else {
+				default:
 					tracker.StartWrite(filePath, tableName, rowCount)
 				}
 			case "write_complete":
 				rowCount := details[0].(int)
-				if !showProgress || !isTerminal() {
+				// Skip progress output for stdin
+				switch {
+				case filePath == "-" || filePath == "":
+					// Silent for stdin
+				case !showProgress || !isTerminal():
 					infoColor.Printf("  [✓] Imported %d rows into '%s'\n", rowCount, tableName)
 					successColor.Printf("✓ Successfully imported table '%s'\n", tableName)
-				} else {
+				default:
 					tracker.FinishWrite(filePath, tableName, int64(rowCount))
 				}
 			case "write_error":
@@ -296,13 +338,15 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 		}
 
 		parseProgressCallback := func(filePath string, rowsRead int64) {
-			if showProgress && isTerminal() {
+			// Skip progress updates for stdin
+			if (filePath != "-" && filePath != "") && showProgress && isTerminal() {
 				tracker.UpdateParse(filePath, rowsRead)
 			}
 		}
 
 		writeProgressCallback := func(filePath string, rowsWritten int64) {
-			if showProgress && isTerminal() {
+			// Skip progress updates for stdin
+			if (filePath != "-" && filePath != "") && showProgress && isTerminal() {
 				tracker.UpdateWrite(filePath, rowsWritten)
 			}
 		}
