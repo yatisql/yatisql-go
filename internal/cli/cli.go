@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime/trace"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,15 +78,21 @@ var rootCmd = &cobra.Command{
   cat data.csv | yatisql -q "SELECT * FROM data LIMIT 10"
 
   # Explicit stdin with explicit stdout
-  yatisql -i - -q "SELECT * FROM data" -o -`,
+  yatisql -i - -q "SELECT * FROM data" -o -
+
+  # Multiple queries with multiple outputs
+  yatisql -i data.csv -q "SELECT * FROM data LIMIT 10" -q "SELECT COUNT(*) FROM data" -o "first10.csv,count.csv"
+
+  # Multiple queries (all to stdout sequentially)
+  yatisql -i data.csv -q "SELECT * FROM data LIMIT 5" -q "SELECT COUNT(*) FROM data"`,
 	RunE: runCommand,
 }
 
 func init() {
 	rootCmd.Flags().StringSliceP("input", "i", []string{}, "Input CSV/TSV file(s), comma-separated for multiple files (use '-' or omit for stdin)")
 	rootCmd.Flags().StringSliceP("table", "t", []string{}, "Table name(s) for imported data, comma-separated (default: 'data', 'data2', etc.)")
-	rootCmd.Flags().StringP("output", "o", "", "Output CSV/TSV file path (default: stdout)")
-	rootCmd.Flags().StringP("query", "q", "", "SQL query to execute")
+	rootCmd.Flags().StringSliceP("output", "o", []string{}, "Output CSV/TSV file path(s), comma-separated (default: stdout). Must match number of queries.")
+	rootCmd.Flags().StringSliceP("query", "q", []string{}, "SQL query(ies) to execute (can specify multiple -q flags)")
 	rootCmd.Flags().StringP("db", "d", "", "SQLite database path (default: temporary file, deleted after execution)")
 	rootCmd.Flags().BoolP("header", "H", true, "Input file has header row")
 	rootCmd.Flags().String("delimiter", "auto", "Field delimiter: 'comma', 'tab', or 'auto' (default: auto)")
@@ -106,8 +113,8 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	// Get flags
 	inputFiles, _ := cmd.Flags().GetStringSlice("input")
 	tableNames, _ := cmd.Flags().GetStringSlice("table")
-	outputFile, _ := cmd.Flags().GetString("output")
-	query, _ := cmd.Flags().GetString("query")
+	outputFilesRaw, _ := cmd.Flags().GetStringSlice("output")
+	queries, _ := cmd.Flags().GetStringSlice("query")
 	dbPath, _ := cmd.Flags().GetString("db")
 	hasHeader, _ := cmd.Flags().GetBool("header")
 	delimiterStr, _ := cmd.Flags().GetString("delimiter")
@@ -116,15 +123,28 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	showProgress, _ := cmd.Flags().GetBool("progress")
 	indexColumns, _ := cmd.Flags().GetStringSlice("index")
 
-	// Handle stdin: if -i is omitted but -q is provided, treat as stdin input
-	if len(inputFiles) == 0 && query != "" {
+	// Parse comma-separated output files
+	var outputFiles []string
+	for _, output := range outputFilesRaw {
+		// Split by comma and trim spaces
+		parts := strings.Split(output, ",")
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				outputFiles = append(outputFiles, trimmed)
+			}
+		}
+	}
+
+	// Handle stdin: if -i is omitted but queries are provided, treat as stdin input
+	if len(inputFiles) == 0 && len(queries) > 0 {
 		inputFiles = []string{"-"}
 	}
 
 	cfg.InputFiles = inputFiles
 	cfg.TableNames = tableNames
-	cfg.OutputFile = outputFile
-	cfg.SQLQuery = query
+	cfg.OutputFiles = outputFiles
+	cfg.SQLQueries = queries
 	cfg.DBPath = dbPath
 	cfg.HasHeader = hasHeader
 	cfg.KeepDB = cmd.Flags().Changed("db")
@@ -166,6 +186,11 @@ func runCommand(cmd *cobra.Command, args []string) error {
 }
 
 func run(cfg *config.Config, traceDebug, showProgress bool) error {
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
 	// Show ASCII art at the start if we have input files
 	if len(cfg.InputFiles) > 0 && isTerminal() {
 		PrintASCIIArt()
@@ -240,6 +265,9 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 		}
 
 		var mu sync.Mutex
+		isStdin := func(path string) bool {
+			return path == "-" || path == ""
+		}
 		progressCallback := func(event string, filePath, tableName string, details ...interface{}) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -247,9 +275,11 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 			switch event {
 			case "parse_start":
 				// Skip progress output for stdin
-				switch {
-				case filePath == "-" || filePath == "":
+				if isStdin(filePath) {
 					// Silent for stdin
+					break
+				}
+				switch {
 				case !showProgress || !isTerminal():
 					infoColor.Printf("  [→] Parsing & writing %s → table '%s' (streaming)...\n", filePath, tableName)
 				default:
@@ -259,9 +289,11 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 				rowCount := details[0].(int)
 				duration := details[1].(time.Duration)
 				// Skip progress output for stdin
-				switch {
-				case filePath == "-" || filePath == "":
+				if isStdin(filePath) {
 					// Silent for stdin
+					break
+				}
+				switch {
 				case !showProgress || !isTerminal():
 					infoColor.Printf("  [✓] Completed streaming %s (%d rows parsed & written) in %v\n", filePath, rowCount, duration.Round(time.Millisecond))
 				default:
@@ -285,9 +317,11 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 					}
 				}
 				// Skip progress output for stdin
-				switch {
-				case filePath == "-" || filePath == "":
+				if isStdin(filePath) {
 					// Silent for stdin
+					break
+				}
+				switch {
 				case !showProgress || !isTerminal():
 					infoColor.Printf("  [→] Writing %s to database...\n", filePath)
 				default:
@@ -296,9 +330,11 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 			case "write_complete":
 				rowCount := details[0].(int)
 				// Skip progress output for stdin
-				switch {
-				case filePath == "-" || filePath == "":
+				if isStdin(filePath) {
 					// Silent for stdin
+					break
+				}
+				switch {
 				case !showProgress || !isTerminal():
 					infoColor.Printf("  [✓] Imported %d rows into '%s'\n", rowCount, tableName)
 					successColor.Printf("✓ Successfully imported table '%s'\n", tableName)
@@ -366,21 +402,100 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 		}
 	}
 
-	// Execute SQL query and export results
-	if cfg.SQLQuery != "" {
-		outputDelimiter := cfg.Delimiter
-		if outputDelimiter == 0 {
-			outputDelimiter = exporter.DetectOutputDelimiter(cfg.OutputFile)
+	// Execute SQL queries and export results
+	if len(cfg.SQLQueries) > 0 {
+		// Determine output files - use provided outputs or default to stdout for each
+		outputFiles := cfg.OutputFiles
+		if len(outputFiles) == 0 {
+			// No outputs provided, all queries write to stdout
+			outputFiles = make([]string, len(cfg.SQLQueries))
+			for i := range outputFiles {
+				outputFiles[i] = "" // Empty string means stdout
+			}
+		} else if len(outputFiles) != len(cfg.SQLQueries) {
+			// This should be caught by Validate(), but check here for safety
+			return fmt.Errorf("number of output files (%d) must match number of queries (%d)", len(outputFiles), len(cfg.SQLQueries))
 		}
 
-		infoColor.Printf("Executing query...\n")
-		result, err := exporter.Execute(db.DB, cfg.SQLQuery, cfg.OutputFile, outputDelimiter)
-		if err != nil {
-			return fmt.Errorf("failed to execute query: %w", err)
+		// Check if any queries write to stdout (can't be concurrent)
+		hasStdout := false
+		for _, outputFile := range outputFiles {
+			if outputFile == "" {
+				hasStdout = true
+				break
+			}
 		}
-		infoColor.Printf("  Exported %d rows\n", result.RowCount)
-		if cfg.OutputFile != "" {
-			successColor.Printf("✓ Query results exported to %s\n", cfg.OutputFile)
+
+		if hasStdout || len(cfg.SQLQueries) == 1 {
+			// Sequential execution for stdout or single query
+			for i, query := range cfg.SQLQueries {
+				outputFile := outputFiles[i]
+
+				// Determine delimiter for this output
+				outputDelimiter := cfg.Delimiter
+				if outputDelimiter == 0 {
+					outputDelimiter = exporter.DetectOutputDelimiter(outputFile)
+				}
+
+				// Show which query is being executed
+				if len(cfg.SQLQueries) > 1 {
+					infoColor.Printf("Executing query %d/%d...\n", i+1, len(cfg.SQLQueries))
+				} else {
+					infoColor.Printf("Executing query...\n")
+				}
+
+				result, err := exporter.Execute(db.DB, query, outputFile, outputDelimiter)
+				if err != nil {
+					return fmt.Errorf("failed to execute query %d: %w", i+1, err)
+				}
+				infoColor.Printf("  Exported %d rows\n", result.RowCount)
+				if outputFile != "" {
+					successColor.Printf("✓ Query %d results exported to %s\n", i+1, outputFile)
+				} else if len(cfg.SQLQueries) > 1 {
+					successColor.Printf("✓ Query %d results written to stdout\n", i+1)
+				}
+			}
+		} else {
+			// Concurrent execution for multiple file outputs
+			var queryWg sync.WaitGroup
+			var queryMu sync.Mutex
+			var queryErrs []error
+
+			for i, query := range cfg.SQLQueries {
+				queryWg.Add(1)
+				go func(queryIdx int, q string, outFile string) {
+					defer queryWg.Done()
+
+					// Determine delimiter for this output
+					outputDelimiter := cfg.Delimiter
+					if outputDelimiter == 0 {
+						outputDelimiter = exporter.DetectOutputDelimiter(outFile)
+					}
+
+					queryMu.Lock()
+					infoColor.Printf("Executing query %d/%d...\n", queryIdx+1, len(cfg.SQLQueries))
+					queryMu.Unlock()
+
+					result, err := exporter.Execute(db.DB, q, outFile, outputDelimiter)
+					if err != nil {
+						queryMu.Lock()
+						queryErrs = append(queryErrs, fmt.Errorf("query %d: %w", queryIdx+1, err))
+						queryMu.Unlock()
+						return
+					}
+
+					queryMu.Lock()
+					infoColor.Printf("  Exported %d rows\n", result.RowCount)
+					successColor.Printf("✓ Query %d results exported to %s\n", queryIdx+1, outFile)
+					queryMu.Unlock()
+				}(i, query, outputFiles[i])
+			}
+
+			queryWg.Wait()
+
+			if len(queryErrs) > 0 {
+				return fmt.Errorf("query execution errors: %v", queryErrs)
+			}
 		}
 	}
 
