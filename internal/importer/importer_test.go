@@ -152,7 +152,7 @@ func TestImportTSVWithMissingValuesMultipleRows(t *testing.T) {
 		t.Errorf("RowCount = %d, want 3", result.RowCount)
 	}
 
-	rows, err := db.DB.Query("SELECT col1, col2, col3 FROM test ORDER BY rowid")
+	rows, err := db.Query("SELECT col1, col2, col3 FROM test ORDER BY rowid")
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
 	}
@@ -240,7 +240,7 @@ func TestImportTSVWithLeadingTabs(t *testing.T) {
 		t.Errorf("RowCount = %d, want 2", result.RowCount)
 	}
 
-	rows, err := db.DB.Query("SELECT col1, col2, col3 FROM test ORDER BY rowid")
+	rows, err := db.Query("SELECT col1, col2, col3 FROM test ORDER BY rowid")
 	if err != nil {
 		t.Fatalf("Query() error = %v", err)
 	}
