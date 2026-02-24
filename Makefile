@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install run help
+.PHONY: build test lint clean install run release help
 
 # Build variables
 BINARY_NAME := yatisql
@@ -57,6 +57,14 @@ install:
 ## run: Build and run with example
 run: build
 	./$(BUILD_DIR)/$(BINARY_NAME) --help
+
+# Release: TAG is required, e.g. make release TAG=v1.0.0
+# Creates and pushes the tag; GitHub Actions Release workflow runs on push tags v*
+## release: Create and push tag to trigger GitHub Release workflow (e.g. make release TAG=v1.0.0)
+release:
+	@if [ -z "$(TAG)" ]; then echo "Usage: make release TAG=vX.Y.Z"; exit 1; fi
+	git tag -a $(TAG) -m "Release $(TAG)"
+	git push origin $(TAG)
 
 ## deps: Download dependencies
 deps:

@@ -23,7 +23,18 @@ var (
 	successColor = color.New(color.FgGreen, color.Bold)
 	infoColor    = color.New(color.FgCyan)
 	warnColor    = color.New(color.FgYellow)
+
+	// Build info (set by main via SetBuildInfo)
+	buildVersion string
+	buildTime    string
 )
+
+// SetBuildInfo sets the version and build time shown by --version and in help.
+// Call this from main before Execute() with ldflags-injected values.
+func SetBuildInfo(version, btime string) {
+	buildVersion = version
+	buildTime = btime
+}
 
 // getHelpWithASCII returns help text with ASCII art.
 func getHelpWithASCII() string {
@@ -104,6 +115,14 @@ func init() {
 
 // Execute runs the root command.
 func Execute() error {
+	if buildVersion != "" {
+		rootCmd.Version = buildVersion
+		tpl := "yatisql {{.Version}}\n"
+		if buildTime != "" {
+			tpl += "Built: " + buildTime + "\n"
+		}
+		rootCmd.SetVersionTemplate(tpl)
+	}
 	return rootCmd.Execute()
 }
 

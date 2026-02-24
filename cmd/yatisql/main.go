@@ -13,13 +13,13 @@ import (
 )
 
 // Version information (set via ldflags at build time)
-// These variables are intentionally unused in code but set via ldflags
 var (
-	version   = "dev"     //nolint:unused // Set via ldflags
-	buildTime = "unknown" //nolint:unused // Set via ldflags
+	version   = "dev"
+	buildTime = "unknown"
 )
 
 func main() {
+	cli.SetBuildInfo(version, buildTime)
 	if err := cli.Execute(); err != nil {
 		errorColor := color.New(color.FgRed, color.Bold)
 		_, _ = errorColor.Fprintf(os.Stderr, "Error: %v\n", err)
