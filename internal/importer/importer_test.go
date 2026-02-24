@@ -88,6 +88,226 @@ func TestImportTSV(t *testing.T) {
 	}
 }
 
+func TestImportTSVWithMissingValues(t *testing.T) {
+	// TSV with 3 columns; data row has first value, double tab, last value (middle column empty)
+	tmpDir := t.TempDir()
+	tsvPath := filepath.Join(tmpDir, "missing.tsv")
+	content := "col1\tcol2\tcol3\nfirst\t\tlast\n"
+	if err := os.WriteFile(tsvPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	result, err := Import(db.DB, tsvPath, "test", '\t', true)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	if result.RowCount != 1 {
+		t.Errorf("RowCount = %d, want 1", result.RowCount)
+	}
+
+	var col1, col2, col3 string
+	err = db.DB.QueryRow("SELECT col1, col2, col3 FROM test LIMIT 1").Scan(&col1, &col2, &col3)
+	if err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if col1 != "first" {
+		t.Errorf("col1 = %q, want %q", col1, "first")
+	}
+	if col2 != "" {
+		t.Errorf("col2 = %q, want empty string", col2)
+	}
+	if col3 != "last" {
+		t.Errorf("col3 = %q, want %q", col3, "last")
+	}
+}
+
+func TestImportTSVWithMissingValuesMultipleRows(t *testing.T) {
+	// Multiple rows: first row has empty middle, second has empty first, third has empty last
+	tmpDir := t.TempDir()
+	tsvPath := filepath.Join(tmpDir, "missing_multi.tsv")
+	content := "col1\tcol2\tcol3\nfirst\t\tlast\n\tmid\tlast2\nfirst2\tmid2\t\n"
+	if err := os.WriteFile(tsvPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	result, err := Import(db.DB, tsvPath, "test", '\t', true)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	if result.RowCount != 3 {
+		t.Errorf("RowCount = %d, want 3", result.RowCount)
+	}
+
+	rows, err := db.Query("SELECT col1, col2, col3 FROM test ORDER BY rowid")
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	defer rows.Close()
+
+	want := []struct{ col1, col2, col3 string }{
+		{"first", "", "last"},
+		{"", "mid", "last2"},
+		{"first2", "mid2", ""},
+	}
+	for i := 0; rows.Next(); i++ {
+		var col1, col2, col3 string
+		if err := rows.Scan(&col1, &col2, &col3); err != nil {
+			t.Fatalf("Scan row %d: %v", i, err)
+		}
+		if i >= len(want) {
+			t.Fatalf("got more than %d rows", len(want))
+		}
+		if col1 != want[i].col1 || col2 != want[i].col2 || col3 != want[i].col3 {
+			t.Errorf("row %d: got (col1=%q, col2=%q, col3=%q), want (%q, %q, %q)",
+				i, col1, col2, col3, want[i].col1, want[i].col2, want[i].col3)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows.Err() = %v", err)
+	}
+}
+
+func TestImportTSVWithAllEmptyRow(t *testing.T) {
+	// One row with all three columns empty (triple tab between nothing)
+	tmpDir := t.TempDir()
+	tsvPath := filepath.Join(tmpDir, "empty_row.tsv")
+	content := "col1\tcol2\tcol3\n\t\t\n"
+	if err := os.WriteFile(tsvPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	result, err := Import(db.DB, tsvPath, "test", '\t', true)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	if result.RowCount != 1 {
+		t.Errorf("RowCount = %d, want 1", result.RowCount)
+	}
+
+	var col1, col2, col3 string
+	err = db.DB.QueryRow("SELECT col1, col2, col3 FROM test LIMIT 1").Scan(&col1, &col2, &col3)
+	if err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if col1 != "" || col2 != "" || col3 != "" {
+		t.Errorf("got (col1=%q, col2=%q, col3=%q), want all empty", col1, col2, col3)
+	}
+}
+
+func TestImportTSVWithLeadingTabs(t *testing.T) {
+	// Tab at beginning of line: line starting with tab yields empty first column.
+	// (With tab as delimiter, a leading tab is parsed as an empty first field.)
+	tmpDir := t.TempDir()
+	tsvPath := filepath.Join(tmpDir, "leading_tabs.tsv")
+	content := "col1\tcol2\tcol3\n\tmid\tlast\n\ta\tb\n"
+	if err := os.WriteFile(tsvPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	result, err := Import(db.DB, tsvPath, "test", '\t', true)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	if result.RowCount != 2 {
+		t.Errorf("RowCount = %d, want 2", result.RowCount)
+	}
+
+	rows, err := db.Query("SELECT col1, col2, col3 FROM test ORDER BY rowid")
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	defer rows.Close()
+
+	want := []struct{ col1, col2, col3 string }{
+		{"", "mid", "last"},
+		{"", "a", "b"},
+	}
+	for i := 0; rows.Next(); i++ {
+		var col1, col2, col3 string
+		if err := rows.Scan(&col1, &col2, &col3); err != nil {
+			t.Fatalf("Scan row %d: %v", i+1, err)
+		}
+		if i >= len(want) {
+			t.Fatalf("got more than %d rows", len(want))
+		}
+		if col1 != want[i].col1 || col2 != want[i].col2 || col3 != want[i].col3 {
+			t.Errorf("row %d (leading tab): got (col1=%q, col2=%q, col3=%q), want (%q, %q, %q)",
+				i+1, col1, col2, col3, want[i].col1, want[i].col2, want[i].col3)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows.Err() = %v", err)
+	}
+}
+
+func TestImportCSVWithMissingValues(t *testing.T) {
+	// CSV with empty middle field: a,,c
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "missing.csv")
+	content := "col1,col2,col3\na,,c\n"
+	if err := os.WriteFile(csvPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	db, err := database.Open("")
+	if err != nil {
+		t.Fatalf("database.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	result, err := Import(db.DB, csvPath, "test", ',', true)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	if result.RowCount != 1 {
+		t.Errorf("RowCount = %d, want 1", result.RowCount)
+	}
+
+	var col1, col2, col3 string
+	err = db.DB.QueryRow("SELECT col1, col2, col3 FROM test LIMIT 1").Scan(&col1, &col2, &col3)
+	if err != nil {
+		t.Fatalf("QueryRow() error = %v", err)
+	}
+	if col1 != "a" {
+		t.Errorf("col1 = %q, want %q", col1, "a")
+	}
+	if col2 != "" {
+		t.Errorf("col2 = %q, want empty string", col2)
+	}
+	if col3 != "c" {
+		t.Errorf("col3 = %q, want %q", col3, "c")
+	}
+}
+
 func TestImportWithoutHeader(t *testing.T) {
 	// Create temp file without header
 	tmpDir := t.TempDir()

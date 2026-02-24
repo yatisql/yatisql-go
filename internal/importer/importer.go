@@ -60,7 +60,8 @@ func ParseFile(input FileInput, progressCallback ParseProgressCallback) *ParsedF
 	reader := csv.NewReader(file)
 	reader.Comma = input.Delimiter
 	reader.LazyQuotes = true
-	reader.TrimLeadingSpace = true
+	// TrimLeadingSpace = false so that consecutive delimiters (e.g. double tab) produce empty fields.
+	reader.TrimLeadingSpace = false
 
 	// Read header row if present
 	if input.HasHeader {
@@ -254,7 +255,7 @@ func importFileStreaming(db *sql.DB, input FileInput, progressCallback ProgressC
 	reader := csv.NewReader(file)
 	reader.Comma = input.Delimiter
 	reader.LazyQuotes = true
-	reader.TrimLeadingSpace = true
+	reader.TrimLeadingSpace = false
 
 	// Read header row
 	var headers []string
