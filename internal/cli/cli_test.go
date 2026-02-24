@@ -175,6 +175,72 @@ func TestRunWithPersistentDatabase(t *testing.T) {
 	}
 }
 
+func TestRunQueryOnlyWithExistingDB(t *testing.T) {
+	testdataPath := findTestdata(t)
+	csvPath := filepath.Join(testdataPath, "sample.csv")
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	countPath := filepath.Join(tmpDir, "count.csv")
+
+	// Step 1: import data into a persistent DB
+	cfgImport := &config.Config{
+		InputFiles: []string{csvPath},
+		DBPath:     dbPath,
+		HasHeader:  true,
+		Delimiter:  ',',
+		KeepDB:     true,
+	}
+	if err := run(cfgImport, false, false); err != nil {
+		t.Fatalf("import run() error = %v", err)
+	}
+
+	// Step 2: query-only (no input files, just -d and -q)
+	cfgQuery := &config.Config{
+		DBPath:      dbPath,
+		SQLQueries:  []string{"SELECT COUNT(*) as row_count FROM data"},
+		OutputFiles: []string{countPath},
+		Delimiter:   ',',
+		KeepDB:      true,
+	}
+	if err := run(cfgQuery, false, false); err != nil {
+		t.Fatalf("query-only run() error = %v", err)
+	}
+
+	content, err := os.ReadFile(countPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("Expected 2 lines (header + count), got %d: %q", len(lines), string(content))
+	}
+	if lines[0] != "row_count" {
+		t.Errorf("header = %q, want %q", lines[0], "row_count")
+	}
+	if lines[1] != "10" {
+		t.Errorf("count = %q, want %q", lines[1], "10")
+	}
+}
+
+func TestRunQueryOnlyDBNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "does_not_exist.db")
+
+	cfg := &config.Config{
+		DBPath:     dbPath,
+		SQLQueries: []string{"SELECT 1"},
+		KeepDB:     true,
+	}
+	err := run(cfg, false, false)
+	if err == nil {
+		t.Fatal("Expected error for non-existent DB, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Expected 'not found' in error, got: %v", err)
+	}
+}
+
 // findTestdata locates the testdata directory relative to the test file.
 func findTestdata(t *testing.T) string {
 	paths := []string{

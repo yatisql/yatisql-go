@@ -155,8 +155,9 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Handle stdin: if -i is omitted but queries are provided, treat as stdin input
-	if len(inputFiles) == 0 && len(queries) > 0 {
+	// Handle stdin: if -i is omitted but queries are provided and no existing DB is specified,
+	// treat as stdin input. When -d is given, the user wants to query an existing database.
+	if len(inputFiles) == 0 && len(queries) > 0 && dbPath == "" {
 		inputFiles = []string{"-"}
 	}
 
@@ -208,6 +209,13 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return err
+	}
+
+	// When querying an existing database with no input files, verify the file exists.
+	if len(cfg.InputFiles) == 0 && cfg.DBPath != "" {
+		if _, err := os.Stat(cfg.DBPath); os.IsNotExist(err) {
+			return fmt.Errorf("database file not found: %s", cfg.DBPath)
+		}
 	}
 
 	// Show ASCII art at the start if we have input files
