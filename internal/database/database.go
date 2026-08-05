@@ -10,6 +10,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// BusyTimeoutMs is how long to wait for a locked database before returning an error (0 = wait forever).
+const BusyTimeoutMs = 3000
+
 // DB wraps a SQLite database connection with additional metadata.
 type DB struct {
 	*sql.DB
@@ -56,6 +59,16 @@ func Open(dbPath string) (*DB, error) {
 			os.Remove(path)
 		}
 		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	if BusyTimeoutMs > 0 {
+		if _, err := db.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", BusyTimeoutMs)); err != nil {
+			db.Close()
+			if shouldCleanup {
+				os.Remove(path)
+			}
+			return nil, fmt.Errorf("failed to set busy timeout: %w", err)
+		}
 	}
 
 	// Enable WAL mode for better concurrent write performance

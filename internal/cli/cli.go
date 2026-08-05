@@ -23,7 +23,18 @@ var (
 	successColor = color.New(color.FgGreen, color.Bold)
 	infoColor    = color.New(color.FgCyan)
 	warnColor    = color.New(color.FgYellow)
+
+	// Build info (set by main via SetBuildInfo)
+	buildVersion string
+	buildTime    string
 )
+
+// SetBuildInfo sets the version and build time shown by --version and in help.
+// Call this from main before Execute() with ldflags-injected values.
+func SetBuildInfo(version, btime string) {
+	buildVersion = version
+	buildTime = btime
+}
 
 // getHelpWithASCII returns help text with ASCII art.
 func getHelpWithASCII() string {
@@ -104,6 +115,14 @@ func init() {
 
 // Execute runs the root command.
 func Execute() error {
+	if buildVersion != "" {
+		rootCmd.Version = buildVersion
+		tpl := "yatisql {{.Version}}\n"
+		if buildTime != "" {
+			tpl += "Built: " + buildTime + "\n"
+		}
+		rootCmd.SetVersionTemplate(tpl)
+	}
 	return rootCmd.Execute()
 }
 
@@ -136,8 +155,9 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Handle stdin: if -i is omitted but queries are provided, treat as stdin input
-	if len(inputFiles) == 0 && len(queries) > 0 {
+	// Handle stdin: if -i is omitted but queries are provided and no existing DB is specified,
+	// treat as stdin input. When -d is given, the user wants to query an existing database.
+	if len(inputFiles) == 0 && len(queries) > 0 && dbPath == "" {
 		inputFiles = []string{"-"}
 	}
 
@@ -189,6 +209,13 @@ func run(cfg *config.Config, traceDebug, showProgress bool) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return err
+	}
+
+	// When querying an existing database with no input files, verify the file exists.
+	if len(cfg.InputFiles) == 0 && cfg.DBPath != "" {
+		if _, err := os.Stat(cfg.DBPath); os.IsNotExist(err) {
+			return fmt.Errorf("database file not found: %s", cfg.DBPath)
+		}
 	}
 
 	// Show ASCII art at the start if we have input files
